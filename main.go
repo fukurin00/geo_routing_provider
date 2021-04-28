@@ -24,13 +24,13 @@ func main() {
 	w := 1216
 	h := 1120
 	origin := grid.Point{X: -16.2, Y: -38.6}
-	maxT := 1000
+	maxT := grid.MaxTimeLength
 
 	var data []int8
 	for i := 0; i < w; i++ {
 		for j := 0; j < h; j++ {
 			r := rand.Intn(100)
-			if r < 30 {
+			if r < 20 {
 				r = 100
 			} else {
 				r = 0
@@ -40,7 +40,7 @@ func main() {
 	}
 
 	g := grid.NewGridMap(reso, origin, maxT, w, h, data)
-	route, err := g.Plan(100, 100, 301, 591)
+	route, err := g.Plan(100, 100, 122, 111)
 	if err != nil {
 		log.Print(err)
 	}
