@@ -2,13 +2,14 @@ package routing
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"math"
 )
 
 var (
-	OpenThreth    uint8 = 10   //これより小さいと通れない
-	MaxTimeLength       = 1000 //これ以上のtを計算しない
+	CloseThreth   int8 = 90   //これより大きいと通れない
+	MaxTimeLength      = 1000 //これ以上のtを計算しない
 )
 
 type Point struct {
@@ -19,7 +20,6 @@ type Point struct {
 type Index struct {
 	X int
 	Y int
-	I int
 	T int
 }
 
@@ -27,7 +27,6 @@ func (m GridMap) nodeIndex(n *Node) Index {
 	i := Index{
 		X: n.XId,
 		Y: n.YId,
-		I: n.XId + m.Width*n.YId,
 		T: n.T,
 	}
 	return i
@@ -38,13 +37,12 @@ func (g GridMap) NewIndex(t, x, y int) *Index {
 	n.T = t
 	n.X = x
 	n.Y = y
-	n.I = y*g.Width + x
 	return n
 }
 
 // type CostMap map[Index]uint8
 type TimeCostMap []CostMap
-type CostMap [][]uint8
+type CostMap [][]int8
 
 type GridMap struct {
 	Resolution float64
@@ -56,12 +54,43 @@ type GridMap struct {
 	MaxT int
 }
 
-func (m GridMap) Plan(sx, sy, gx, gy int, vel float64) (route [][2]int, oerr error) {
+func NewGridMap(reso float64, origin Point, maxT, width, height int, data []int8) *GridMap {
+	g := new(GridMap)
+	g.Resolution = reso
+	g.Origin = origin
+	g.Width = width
+	g.Height = height
+	g.MaxT = maxT
+	g.TW = []CostMap{}
+
+	var line []int8
+	var grid [][]int8
+	for i, d := range data {
+		line = append(line, d)
+		if i%width == width-1 {
+			grid = append(grid, line)
+			line = []int8{}
+		}
+	}
+	g.TW = append(g.TW, grid)
+
+	for i := 1; i < maxT; i++ {
+		g.TW = append(g.TW, grid)
+	}
+	return g
+}
+
+func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
 	// if m.TW[0][sx][sy] > OpenThreth{
 	// 	oerr = errors.New("Path planning error: start point i")
 	// }
-	start := &Node{T: 0, XId: sx, YId: sy, Cost: 0, Parent: nil, TW: m.TW}
-	goal := &Node{T: 0, XId: gx, YId: gy, Cost: 0, Parent: nil, TW: m.TW}
+
+	if m.TW[0][gy][gx] > CloseThreth {
+		oerr = errors.New("path planning error: goal is not verified...")
+		return nil, oerr
+	}
+	start := &Node{T: 0, XId: sx, YId: sy, Cost: 0, Parent: nil}
+	goal := &Node{T: 0, XId: gx, YId: gy, Cost: 0, Parent: nil}
 
 	openSet := make(map[Index]*Node)
 
@@ -69,22 +98,28 @@ func (m GridMap) Plan(sx, sy, gx, gy int, vel float64) (route [][2]int, oerr err
 
 	openSet[m.nodeIndex(start)] = start
 
+	count := 0
+	current := &Node{T: 0}
+
 	for {
+		count += 1
 		if len(openSet) == 0 {
-			oerr = errors.New("Path planning error: gopen set is empty")
+			log.Print(count)
+			oerr = errors.New("path planning error: open set is empty...")
 			return nil, oerr
 		}
 
-		minCost := 99999999.9
+		minCost := 9999999999999999999.9
 		var minKey Index
 		for key, val := range openSet {
-			calCost := val.Cost + heuristic(goal, val)
+			calCost := val.Cost + heuristic(goal, val) + float64(val.T) - float64(current.T)
 			if calCost < minCost {
 				minCost = calCost
 				minKey = key
 			}
 		}
-		current := openSet[minKey]
+		current = openSet[minKey]
+		fmt.Print(current.T, current.XId, current.YId, current.Cost, ",")
 
 		if current.XId == gx && current.YId == gy {
 			log.Print("find goal")
@@ -110,13 +145,13 @@ func (m GridMap) Plan(sx, sy, gx, gy int, vel float64) (route [][2]int, oerr err
 	}
 }
 
-func (m GridMap) finalPath(goal *Node, closeSet map[Index]*Node) (route [][2]int, oerr error) {
-	route = append(route, [2]int{goal.XId, goal.YId})
+func (m GridMap) finalPath(goal *Node, closeSet map[Index]*Node) (route [][3]int, oerr error) {
+	route = append(route, [3]int{m.MaxT, goal.XId, goal.YId})
 
 	parent := goal.Parent
 	for parent != nil {
 		n := closeSet[m.nodeIndex(parent)]
-		route = append(route, [2]int{n.XId, n.YId})
+		route = append(route, [3]int{n.T, n.XId, n.YId})
 		parent = n.Parent
 	}
 	return route, nil
@@ -130,7 +165,7 @@ type Node struct {
 	Cost float64
 
 	Parent *Node
-	TW     TimeCostMap
+	// TW     TimeCostMap
 }
 
 func (s *Node) NewNode(t, x, y int, cost float64) *Node {
@@ -140,29 +175,31 @@ func (s *Node) NewNode(t, x, y int, cost float64) *Node {
 	n.YId = y
 	n.Parent = s
 	n.Cost = cost
-	n.TW = s.TW
 	return n
 }
 
 func (n *Node) Around(g *GridMap) []*Node {
 	// time, x, y, cost
 	motion := [9][4]float64{
-		{1.0, 0.0, 0.0, 2}, //stay
+		{1.0, 0.0, 0.0, 2}, //stay 要修正
 		{0, 1.0, 0, 1.0},
 		{0, 0, 1.0, 1.0},
 		{0, -1.0, 0, 1.0},
-		{0, -1.0, 1.0},
+		{0, 0, -1.0, 1.0},
 		{0, -1.0, -1.0, math.Sqrt(2)},
 		{0, -1.0, 1.0, math.Sqrt(2)},
 		{0, 1.0, -1.0, math.Sqrt(2)},
 		{0, 1.0, 1.0, math.Sqrt(2)},
 	}
 	var around []*Node
-	for _, m := range motion {
+	for i, m := range motion {
+		if i == 0 {
+			continue
+		}
 		aX := n.XId + int(m[1])
 		aY := n.YId + int(m[2])
-		aT := n.T + int(m[0]) + 1
-		if aT > g.MaxT {
+		aT := n.T + int(m[0])
+		if aT >= g.MaxT {
 			continue
 		}
 
@@ -174,13 +211,13 @@ func (n *Node) Around(g *GridMap) []*Node {
 			continue
 		}
 
-		mCost := n.TW[aT][aX][aY]
+		mCost := g.TW[aT+1][aY][aX]
 		//通れないコストマップは外す
-		if mCost > OpenThreth {
+		if mCost > CloseThreth {
 			continue
 		}
 
-		node := n.NewNode(aT, aX, aY, n.Cost+m[2]+float64(mCost)/2) //要修正
+		node := n.NewNode(aT+1, aX, aY, n.Cost+m[3]+float64(mCost)/10) //要修正
 		around = append(around, node)
 	}
 	return around
