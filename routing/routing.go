@@ -70,6 +70,12 @@ type GridMap struct {
 	ObjectMap [][]bool //元からある障害物ならTrue
 }
 
+func (g GridMap) Ind2Pos(xId, yId int) (float64, float64) {
+	x := g.Origin.X + float64(xId)*g.Resolution
+	y := g.Origin.Y + float64(yId)*g.Resolution
+	return x, y
+}
+
 func NewGridMap(reso float64, origin Point, maxT, width, height int, data []uint8) *GridMap {
 	g := new(GridMap)
 	g.Resolution = reso
@@ -205,6 +211,19 @@ func (m GridMap) finalPath(goal *Node, closeSet map[IndexT]*Node) (route [][3]in
 		parent = n.Parent
 	}
 	return route, nil
+}
+
+func (g GridMap) Route2Pos(minT float64, route [][3]int) [][3]float64 {
+	l := len(route)
+	fRoute := make([][3]float64, l)
+
+	for i, r := range route {
+		x, y := g.Ind2Pos(r[1], r[2])
+		t := minT + float64(r[0]*i)
+		p := [3]float64{t, x, y}
+		fRoute[i] = p
+	}
+	return fRoute
 }
 
 type Node struct {
