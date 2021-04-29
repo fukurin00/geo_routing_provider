@@ -76,6 +76,16 @@ func (g GridMap) Ind2Pos(xId, yId int) (float64, float64) {
 	return x, y
 }
 
+func (g GridMap) Pos2Ind(x, y float64) (int, int) {
+	if x < g.Origin.X || y < g.Origin.Y {
+		log.Printf("position (%f,%f) is out of map", x, y)
+		return 0, 0
+	}
+	xid := int(math.Round((x - g.Origin.X) / g.Resolution))
+	yid := int(math.Round((y - g.Origin.Y) / g.Resolution))
+	return xid, yid
+}
+
 func NewGridMap(reso float64, origin Point, maxT, width, height int, data []uint8) *GridMap {
 	g := new(GridMap)
 	g.Resolution = reso

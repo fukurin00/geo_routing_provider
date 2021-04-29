@@ -14,18 +14,21 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"sync"
 
 	grid "github.com/fukurin00/geo_routing_provider/routing"
 
-	synerex "github.com/fukurin00/provider_api/src/api"
+	synerex "github.com/fukurin00/provider_api"
 
-	// sxmqtt "github.com/synerex/proto_mqtt"
 	cav "github.com/synerex/proto_cav"
+	sxmqtt "github.com/synerex/proto_mqtt"
 	api "github.com/synerex/synerex_api"
 	sxutil "github.com/synerex/synerex_sxutil"
 	"google.golang.org/protobuf/proto"
+
+	msg "github.com/fukurin00/geo_routing_provider/msg"
 )
 
 var (
@@ -41,6 +44,32 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 	if sp.SupplyName == "DestDemand" {
 		rcd := &cav.DestinationRequest{}
 		err := proto.Unmarshal(sp.Cdata.Entity, rcd)
+		if err != nil {
+			log.Print(err)
+		}
+		isx, isy := gridMap.Pos2Ind(float64(rcd.Current.X), float64(rcd.Current.Y))
+		igx, igy := gridMap.Pos2Ind(float64(rcd.Destination.X), float64(rcd.Destination.Y))
+
+		routei, err := gridMap.Plan(isx, isy, igx, igy)
+		if err != nil {
+			log.Print(err)
+		}
+		route := gridMap.Route2Pos(0, routei)
+
+		jsonPayload, err := msg.MakePathMsg(route)
+		if err != nil {
+			log.Print(err)
+		}
+		topic := fmt.Sprintf("/robot/path/%d", rcd.RobotId)
+		mqttProt := sxmqtt.MQTTRecord{
+			Topic:  topic,
+			Record: jsonPayload,
+		}
+		out, err := proto.Marshal(&mqttProt)
+		if err != nil {
+			log.Print(err)
+		}
+		_, err = synerexConfig.NotifySupply(out, synerex.MQTT_GATEWAY_SVC, "Path")
 		if err != nil {
 			log.Print(err)
 		}

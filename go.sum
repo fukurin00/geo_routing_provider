@@ -18,6 +18,8 @@ github.com/envoyproxy/go-control-plane v0.9.9-0.20201210154907-fd9021fe5dad/go.m
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
 github.com/fukurin00/provider_api v1.0.0 h1:LrOX8OSPu5BRSDYqM7jegEY/VLIjGpNG+OccmGwTrN8=
 github.com/fukurin00/provider_api v1.0.0/go.mod h1:9uPjdccMKIacvbbaVNb7m+EsaD1jlA+L/Ti8UPpt/hA=
+github.com/fukurin00/provider_api v1.0.1 h1:lCdn405bGytbW2NT7Dcqm2/VxOh+I5fApJ32zrE7BQE=
+github.com/fukurin00/provider_api v1.0.1/go.mod h1:9uPjdccMKIacvbbaVNb7m+EsaD1jlA+L/Ti8UPpt/hA=
 github.com/go-ole/go-ole v1.2.4/go.mod h1:XCwSNxSkXRo4vlyPy93sltvi/qJq0jqQhjqQNIwKuxM=
 github.com/go-ole/go-ole v1.2.5 h1:t4MGB5xEDZvXI+0rMjjsfBsD7yAgp/s9ZDkL1JndXwY=
 github.com/go-ole/go-ole v1.2.5/go.mod h1:pprOEPIfldk/42T2oK7lQ4v4JSDwmV0As9GaiUsvbm0=
