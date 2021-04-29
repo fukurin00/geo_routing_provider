@@ -3,17 +3,15 @@ package routing
 import (
 	"errors"
 
-	"math/rand"
-
 	"log"
 	"math"
 	"time"
 )
 
 const (
-	CloseThreth       int8 = 90      //これより大きいと通れない
-	MaxTimeLength     int  = 1000000 //これ以上のtを計算しない
-	MaxSearchTimeStep int  = 1000    //これ以上先の時間を計算しない
+	CloseThreth       uint8 = 90      //これより大きいと通れない  [0,100]
+	MaxTimeLength     int   = 1000000 //これ以上のtを計算しない
+	MaxSearchTimeStep int   = 1000    //これ以上先の時間を計算しない
 )
 
 type Point struct {
@@ -59,7 +57,7 @@ func NewIndexT(t, x, y int) *IndexT {
 
 // type CostMap map[Index]uint8
 type TimeCostMap []CostMap
-type CostMap [][]int8
+type CostMap [][]uint8
 
 type GridMap struct {
 	Resolution float64
@@ -72,7 +70,7 @@ type GridMap struct {
 	ObjectMap [][]bool //元からある障害物ならTrue
 }
 
-func NewGridMap(reso float64, origin Point, maxT, width, height int, data []int8) *GridMap {
+func NewGridMap(reso float64, origin Point, maxT, width, height int, data []uint8) *GridMap {
 	g := new(GridMap)
 	g.Resolution = reso
 	g.Origin = origin
@@ -83,11 +81,11 @@ func NewGridMap(reso float64, origin Point, maxT, width, height int, data []int8
 	g.ObjectMap = make([][]bool, height)
 	g.TW = make(TimeCostMap, maxT)
 
-	line := make([]int8, width)
-	grid := make([][]int8, height)
+	line := make([]uint8, width)
+	grid := make([][]uint8, height)
 	objLine := make([]bool, width)
 	for i, d := range data {
-		if d > CloseThreth {
+		if d > uint8(CloseThreth) {
 			objLine[i%width] = true
 		} else {
 			objLine[i%width] = false
@@ -95,20 +93,20 @@ func NewGridMap(reso float64, origin Point, maxT, width, height int, data []int8
 		line[i%width] = d
 		if i%width == width-1 {
 			grid[i/width] = line
-			line = make([]int8, width)
+			line = make([]uint8, width)
 			g.ObjectMap[i/width] = objLine
 			objLine = make([]bool, width)
 		}
 	}
 
-	var prx, pry int
+	// var prx, pry int
 	for i := 0; i < maxT; i++ {
-		rx := rand.Intn(width)
-		ry := rand.Intn(height)
-		grid[ry][rx] = 100
-		grid[pry][prx] = 0
-		prx = rx
-		pry = ry
+		// rx := rand.Intn(width)
+		// ry := rand.Intn(height)
+		// grid[ry][rx] = 100
+		// grid[pry][prx] = 0
+		// prx = rx
+		// pry = ry
 		g.TW[i] = grid
 	}
 	return g
@@ -245,7 +243,7 @@ func (n *Node) Around(g *GridMap, minTime int) []*Node {
 	}
 	var around []*Node
 	for i, m := range motion {
-		if i==0{
+		if i == 0 {
 			continue
 		}
 		aX := n.XId + int(m[1])
