@@ -2,7 +2,7 @@ package routing
 
 import (
 	"errors"
-	"fmt"
+
 	"math/rand"
 
 	"log"
@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-var (
+const (
 	CloseThreth       int8 = 90      //これより大きいと通れない
 	MaxTimeLength     int  = 1000000 //これ以上のtを計算しない
-	MaxSearchTimeStep int  = 5       //これ以上先の時間を計算しない
+	MaxSearchTimeStep int  = 1000    //これ以上先の時間を計算しない
 )
 
 type Point struct {
@@ -80,35 +80,36 @@ func NewGridMap(reso float64, origin Point, maxT, width, height int, data []int8
 	g.Height = height
 	g.MaxT = maxT
 	g.TW = []CostMap{}
+	g.ObjectMap = make([][]bool, height)
+	g.TW = make(TimeCostMap, maxT)
 
-	var line []int8
-	var grid [][]int8
-	var objLine []bool
+	line := make([]int8, width)
+	grid := make([][]int8, height)
+	objLine := make([]bool, width)
 	for i, d := range data {
-		if d > CloseThreth || d == -1 {
-			objLine = append(objLine, true)
+		if d > CloseThreth {
+			objLine[i%width] = true
 		} else {
-			objLine = append(objLine, false)
+			objLine[i%width] = false
 		}
-		line = append(line, d)
+		line[i%width] = d
 		if i%width == width-1 {
-			grid = append(grid, line)
-			line = []int8{}
-			g.ObjectMap = append(g.ObjectMap, objLine)
+			grid[i/width] = line
+			line = make([]int8, width)
+			g.ObjectMap[i/width] = objLine
+			objLine = make([]bool, width)
 		}
 	}
-	g.TW = append(g.TW, grid)
 
 	var prx, pry int
-	for i := 1; i < maxT; i++ {
+	for i := 0; i < maxT; i++ {
 		rx := rand.Intn(width)
 		ry := rand.Intn(height)
 		grid[ry][rx] = 100
 		grid[pry][prx] = 0
 		prx = rx
 		pry = ry
-
-		g.TW = append(g.TW, grid)
+		g.TW[i] = grid
 	}
 	return g
 }
@@ -129,7 +130,8 @@ func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
 
 	openSet := make(map[IndexT]*Node)
 
-	closeSet := make(map[IndexT]*Node)
+	closeSet := make(map[Index]*Node)
+	closeSetT := make(map[IndexT]*Node)
 
 	openSet[nodeIndexT(start)] = start
 
@@ -161,7 +163,7 @@ func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
 			}
 		}
 		current = openSet[minKey]
-		fmt.Print(current.T, current.XId, current.YId, current.Cost, ",")
+		// fmt.Print(current.T, current.XId, current.YId, current.Cost, ",")
 
 		if current.XId == gx && current.YId == gy {
 			log.Print("find goal")
@@ -170,19 +172,22 @@ func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
 			endTime := time.Now()
 			elaps := endTime.Sub(startTime)
 			log.Printf("takes %f seconds, count is %d", elaps.Seconds(), count)
-			return m.finalPath(goal, closeSet)
+			return m.finalPath(goal, closeSetT)
 		}
 
 		delete(openSet, minKey)
-		closeSet[nodeIndexT(current)] = current
+		closeSet[nodeIndex(current)] = current
+		closeSetT[nodeIndexT(current)] = current
 
 		around := current.Around(&m, minTime)
 		for _, an := range around {
 			indT := nodeIndexT(an)
-			// ind := nodeIndex(an)
+			ind := nodeIndex(an)
 
-			if _, ok := closeSet[indT]; ok {
-				continue
+			if val, ok := closeSet[ind]; ok {
+				if val.XId != an.XId || val.YId != an.YId {
+					continue
+				}
 			}
 
 			if _, ok := openSet[indT]; !ok {
@@ -228,7 +233,7 @@ func (s *Node) NewNode(t, x, y int, cost float64) *Node {
 func (n *Node) Around(g *GridMap, minTime int) []*Node {
 	// time, x, y, cost
 	motion := [9][4]float64{
-		{1.0, 0.0, 0.0, 2.0}, //stay 要修正
+		{1.0, 0.0, 0.0, 0.0}, //stay 要修正
 		{0.0, 1.0, 0.0, 1.0},
 		{0.0, 0.0, 1.0, 1.0},
 		{0.0, -1.0, 0.0, 1.0},
@@ -239,12 +244,14 @@ func (n *Node) Around(g *GridMap, minTime int) []*Node {
 		{0.0, 1.0, 1.0, math.Sqrt(2)},
 	}
 	var around []*Node
-	for _, m := range motion {
+	for i, m := range motion {
+		if i==0{
+			continue
+		}
 		aX := n.XId + int(m[1])
 		aY := n.YId + int(m[2])
-		aT := n.T + int(m[0])
-		// 最大 MaxSearchTimeStep 分 time先しか探さない
-		if aT >= g.MaxT || aT > minTime+MaxSearchTimeStep {
+		aT := n.T + int(m[0]) + 1
+		if aT >= g.MaxT {
 			continue
 		}
 
