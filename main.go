@@ -61,28 +61,29 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 	routei, err := gridMap.Plan(isx, isy, igx, igy)
 	if err != nil {
 		log.Print(err)
-	}
-	route := gridMap.Route2Pos(0, routei)
+	} else {
+		route := gridMap.Route2Pos(0, routei)
 
-	jsonPayload, err := msg.MakePathMsg(route)
-	if err != nil {
-		log.Print(err)
+		jsonPayload, err := msg.MakePathMsg(route)
+		if err != nil {
+			log.Print(err)
+		}
+		topic := fmt.Sprintf("/robot/path/%d", rcd.RobotId)
+		mqttProt := sxmqtt.MQTTRecord{
+			Topic:  topic,
+			Record: jsonPayload,
+		}
+		out, err := proto.Marshal(&mqttProt)
+		if err != nil {
+			log.Print(err)
+		}
+		cout := api.Content{Entity: out}
+		smo := sxutil.SupplyOpts{
+			Name:  "robotRoute",
+			Cdata: &cout,
+		}
+		_, err = mqttClient.NotifySupply(&smo)
 	}
-	topic := fmt.Sprintf("/robot/path/%d", rcd.RobotId)
-	mqttProt := sxmqtt.MQTTRecord{
-		Topic:  topic,
-		Record: jsonPayload,
-	}
-	out, err := proto.Marshal(&mqttProt)
-	if err != nil {
-		log.Print(err)
-	}
-	cout := api.Content{Entity: out}
-	smo := sxutil.SupplyOpts{
-		Name:  "robotRoute",
-		Cdata: &cout,
-	}
-	_, err = mqttClient.NotifySupply(&smo)
 }
 
 func subsclibeRouteSupply(client *sxutil.SXServiceClient) {
