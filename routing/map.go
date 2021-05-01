@@ -56,10 +56,10 @@ func ReadStaticMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, er
 	for j := m.H - 1; j >= 0; j-- {
 		for i := 0; i < m.W; i++ {
 			oldPix := imageData.At(i, j)
-			pixel := color.GrayModel.Convert(oldPix).(color.Gray).Y
-			// pixelU := color.GrayModel.Convert(pixel).(color.Gray).Y
+			pixel := color.GrayModel.Convert(oldPix)
+			pixelU := color.GrayModel.Convert(pixel).(color.Gray).Y
 
-			a := pixel
+			a := pixelU
 			var v int8 = 0
 			if a > uint8(closeThreth) {
 				v = 100
@@ -75,4 +75,27 @@ func ReadStaticMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, er
 	m.Data = data
 
 	return m, nil
+}
+
+func (m MapMeta) GetObjectMap() [][2]float64 {
+	var objMap [][2]float64
+	insideWall := false
+	for i, pixel := range m.Data {
+		if i%2 != 0 {
+			continue
+		}
+
+		if pixel == 0 {
+			if insideWall {
+				continue
+			}
+			x := float64(i%m.W)*(m.Reso) + (m.Origin.X)
+			y := float64(i/m.W)*(m.Reso) + (m.Origin.Y)
+			var oPoint = [2]float64{x, y}
+			objMap = append(objMap, oPoint)
+		} else {
+			insideWall = false
+		}
+	}
+	return objMap
 }

@@ -30,15 +30,12 @@ import (
 	sxutil "github.com/synerex/synerex_sxutil"
 	"google.golang.org/protobuf/proto"
 
-	// msg "github.com/fukurin00/geo_routing_provider/msg"
-
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	ros "github.com/fukurin00/go_ros_msg"
 	pbase "github.com/synerex/synerex_proto"
 )
 
 var (
-	// synerexConfig *synerex.SynerexConfig
 	// mapFile  string = "map/willow_garage_v_edited.pgm"
 	// yamlFile string = "map/willow_garage_v_edited.yaml"
 	mqttsrv = flag.String("mqtt", "localhost", "MQTT Broker address")
