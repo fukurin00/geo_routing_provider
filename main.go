@@ -14,12 +14,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/fukurin00/geo_routing_provider/msg"
 	grid "github.com/fukurin00/geo_routing_provider/routing"
 
 	cav "github.com/synerex/proto_cav"
@@ -28,7 +31,8 @@ import (
 	sxutil "github.com/synerex/synerex_sxutil"
 	"google.golang.org/protobuf/proto"
 
-	msg "github.com/fukurin00/geo_routing_provider/msg"
+	// msg "github.com/fukurin00/geo_routing_provider/msg"
+	ros "github.com/fukurin00/go_ros_msg"
 	pbase "github.com/synerex/synerex_proto"
 )
 
@@ -37,8 +41,9 @@ var (
 	mapFile  string = "map/willow_garage_v_edited.pgm"
 	yamlFile string = "map/willow_garage_v_edited.yaml"
 
-	mapMeta *grid.MapMeta
-	gridMap *grid.GridMap
+	mapMetaUpdate               = false
+	mapMeta       *grid.MapMeta = nil
+	gridMap       *grid.GridMap = nil
 
 	mu              sync.Mutex
 	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "node serv address")
@@ -55,6 +60,10 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 		log.Print(err)
 	}
 	log.Printf("receive dest request robot%d", rcd.RobotId)
+	if gridMap == nil {
+		log.Print("not receive gridMap yet ...")
+		return
+	}
 	isx, isy := gridMap.Pos2Ind(float64(rcd.Current.X), float64(rcd.Current.Y))
 	igx, igy := gridMap.Pos2Ind(float64(rcd.Destination.X), float64(rcd.Destination.Y))
 
@@ -83,6 +92,9 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 			Cdata: &cout,
 		}
 		_, err = mqttClient.NotifySupply(&smo)
+		if err != nil {
+			log.Print(err)
+		}
 	}
 }
 
@@ -90,6 +102,42 @@ func subsclibeRouteSupply(client *sxutil.SXServiceClient) {
 	ctx := context.Background()
 	for {
 		client.SubscribeSupply(ctx, routeCallback)
+		reconnectClient(client)
+	}
+}
+
+func mqqtCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
+	if sp.SenderId == uint64(clt.ClientID) {
+		return
+	}
+
+	rcd := &sxmqtt.MQTTRecord{}
+	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
+	if err != nil {
+		log.Print(err)
+	}
+	if strings.HasPrefix(rcd.Topic, "/global_costmap") {
+		if !mapMetaUpdate {
+			var occupancy ros.OccupancyGrid
+			merr := json.Unmarshal(rcd.Record, &occupancy)
+			if merr != nil {
+				log.Print(merr)
+			} else {
+				mapMeta = grid.LoadROSMap(occupancy, 50)
+				maxT := grid.MaxTimeLength
+				gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
+				log.Print("global costmap updated")
+				mapMetaUpdate = true
+			}
+		}
+	}
+
+}
+
+func subsclibeMQQTSupply(client *sxutil.SXServiceClient) {
+	ctx := context.Background()
+	for {
+		client.SubscribeSupply(ctx, mqqtCallback)
 		reconnectClient(client)
 	}
 }
@@ -129,19 +177,21 @@ func main() {
 	sxServerAddress = srv
 
 	synerexClient := sxutil.GrpcConnectServer(srv)
-	argJson1 := fmt.Sprintf("{Client: GeoMQTT}")
+	argJson1 := "{Client: GeoMQTT}"
 	mqttClient = sxutil.NewSXServiceClient(synerexClient, pbase.MQTT_GATEWAY_SVC, argJson1)
-	argJson2 := fmt.Sprintf("{Client: GeoRoute}")
+	argJson2 := "{Client: GeoRoute}"
 	routeClient = sxutil.NewSXServiceClient(synerexClient, pbase.ROUTING_SERVICE, argJson2)
 
-	mapMeta, err = grid.ReadMapImage(yamlFile, mapFile, 230)
-	if err != nil {
-		log.Print(err)
-	}
-	maxT := grid.MaxTimeLength
-	gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
+	// mapMeta, err = grid.ReadStaticMapImage(yamlFile, mapFile, 230)
+	// if err != nil {
+	// 	log.Print(err)
+	// }
+	// maxT := grid.MaxTimeLength
+	// gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
 
+	log.Print("start subscribing")
 	go subsclibeRouteSupply(routeClient)
+	go subsclibeMQQTSupply(mqttClient)
 	wg.Add(1)
 	wg.Wait()
 	// sx, sy := 10, 10

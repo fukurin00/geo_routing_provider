@@ -57,7 +57,7 @@ func NewIndexT(t, x, y int) *IndexT {
 
 // type CostMap map[Index]uint8
 type TimeCostMap []CostMap
-type CostMap [][]uint8
+type CostMap [][]int8
 
 type GridMap struct {
 	Resolution float64
@@ -86,7 +86,7 @@ func (g GridMap) Pos2Ind(x, y float64) (int, int) {
 	return xid, yid
 }
 
-func NewGridMap(reso float64, origin Point, maxT, width, height int, data []uint8) *GridMap {
+func NewGridMap(reso float64, origin Point, maxT, width, height int, data []int8) *GridMap {
 	g := new(GridMap)
 	g.Resolution = reso
 	g.Origin = origin
@@ -97,11 +97,11 @@ func NewGridMap(reso float64, origin Point, maxT, width, height int, data []uint
 	g.ObjectMap = make([][]bool, height)
 	g.TW = make(TimeCostMap, maxT)
 
-	line := make([]uint8, width)
-	grid := make([][]uint8, height)
+	line := make([]int8, width)
+	grid := make([][]int8, height)
 	objLine := make([]bool, width)
 	for i, d := range data {
-		if d > uint8(CloseThreth) {
+		if d > int8(CloseThreth) {
 			objLine[i%width] = true
 		} else {
 			objLine[i%width] = false
@@ -109,7 +109,7 @@ func NewGridMap(reso float64, origin Point, maxT, width, height int, data []uint
 		line[i%width] = d
 		if i%width == width-1 {
 			grid[i/width] = line
-			line = make([]uint8, width)
+			line = make([]int8, width)
 			g.ObjectMap[i/width] = objLine
 			objLine = make([]bool, width)
 		}
@@ -297,7 +297,7 @@ func (n *Node) Around(g *GridMap, minTime int) []*Node {
 
 		mCost := g.TW[aT][aY][aX]
 		//通れないコストマップは外す
-		if mCost > CloseThreth {
+		if mCost > int8(CloseThreth) {
 			continue
 		}
 

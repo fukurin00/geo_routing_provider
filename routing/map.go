@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	ros "github.com/fukurin00/go_ros_msg"
 	_ "github.com/jbuchbinder/gopnm"
 )
 
@@ -14,11 +15,21 @@ type MapMeta struct {
 	H      int
 	Origin Point
 	Reso   float64
-	Data   []uint8
+	Data   []int8
+}
+
+func LoadROSMap(grid ros.OccupancyGrid, closeThreth int) *MapMeta {
+	m := new(MapMeta)
+	m.H = int(grid.Info.Height)
+	m.W = int(grid.Info.Width)
+	m.Origin = Point{X: grid.Info.Origin.Position.X, Y: grid.Info.Origin.Position.Y}
+	m.Reso = float64(grid.Info.Resolution)
+	m.Data = grid.Data
+	return m
 }
 
 // read image file of ROS format
-func ReadMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, error) {
+func ReadStaticMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, error) {
 	m := new(MapMeta)
 	mapConfig := ReadImageYaml(yamlFile)
 	m.Reso = mapConfig.Resolution
@@ -39,7 +50,7 @@ func ReadMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, error) {
 	m.W = bound.Dx()
 	m.H = bound.Dy()
 
-	data := make([]uint8, m.W*m.H)
+	data := make([]int8, m.W*m.H)
 	open := 0
 	close := 0
 	for j := m.H - 1; j >= 0; j-- {
@@ -49,7 +60,7 @@ func ReadMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, error) {
 			// pixelU := color.GrayModel.Convert(pixel).(color.Gray).Y
 
 			a := pixel
-			var v uint8 = 0
+			var v int8 = 0
 			if a > uint8(closeThreth) {
 				v = 100
 				close += 1
