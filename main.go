@@ -18,7 +18,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"time"
 
@@ -32,14 +31,17 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	// msg "github.com/fukurin00/geo_routing_provider/msg"
+
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	ros "github.com/fukurin00/go_ros_msg"
 	pbase "github.com/synerex/synerex_proto"
 )
 
 var (
 	// synerexConfig *synerex.SynerexConfig
-	mapFile  string = "map/willow_garage_v_edited.pgm"
-	yamlFile string = "map/willow_garage_v_edited.yaml"
+	// mapFile  string = "map/willow_garage_v_edited.pgm"
+	// yamlFile string = "map/willow_garage_v_edited.yaml"
+	mqttsrv = flag.String("mqtt", "localhost", "MQTT Broker address")
 
 	mapMetaUpdate               = false
 	mapMeta       *grid.MapMeta = nil
@@ -51,7 +53,13 @@ var (
 
 	mqttClient  *sxutil.SXServiceClient
 	routeClient *sxutil.SXServiceClient
+
+	msgCh chan mqtt.Message
 )
+
+func init() {
+	msgCh = make(chan mqtt.Message)
+}
 
 func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 	rcd := &cav.DestinationRequest{}
@@ -77,7 +85,7 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 		if err != nil {
 			log.Print(err)
 		}
-		topic := fmt.Sprintf("/robot/path/%d", rcd.RobotId)
+		topic := fmt.Sprintf("robot/path/%d", rcd.RobotId)
 		mqttProt := sxmqtt.MQTTRecord{
 			Topic:  topic,
 			Record: jsonPayload,
@@ -94,6 +102,8 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 		_, err = mqttClient.NotifySupply(&smo)
 		if err != nil {
 			log.Print(err)
+		} else {
+			log.Printf("send path robot %d", rcd.RobotId)
 		}
 	}
 }
@@ -106,41 +116,47 @@ func subsclibeRouteSupply(client *sxutil.SXServiceClient) {
 	}
 }
 
-func mqqtCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
-	if sp.SenderId == uint64(clt.ClientID) {
-		return
-	}
+// func mqqtCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
+// 	if sp.SenderId == uint64(clt.ClientID) {
+// 		return
+// 	}
 
-	rcd := &sxmqtt.MQTTRecord{}
-	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
-	if err != nil {
-		log.Print(err)
-	}
-	if strings.HasPrefix(rcd.Topic, "/global_costmap") {
-		if !mapMetaUpdate {
-			var occupancy ros.OccupancyGrid
-			merr := json.Unmarshal(rcd.Record, &occupancy)
-			if merr != nil {
-				log.Print(merr)
-			} else {
-				mapMeta = grid.LoadROSMap(occupancy, 50)
-				maxT := grid.MaxTimeLength
-				gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
-				log.Print("global costmap updated")
-				mapMetaUpdate = true
-			}
-		}
-	}
+// 	rcd := &sxmqtt.MQTTRecord{}
+// 	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
+// 	if err != nil {
+// 		log.Print(err)
+// 	}
 
-}
+// 	if strings.HasPrefix(rcd.Topic, "map/") {
+// 		if strings.HasPrefix(rcd.Topic, "map/global_costmap") {
+// 			if !mapMetaUpdate {
+// 				log.Print("updating global costmap..")
+// 				mu.Lock()
+// 				defer mu.Unlock()
+// 				var occupancy ros.OccupancyGrid
+// 				merr := json.Unmarshal(rcd.Record, &occupancy)
+// 				if merr != nil {
+// 					log.Print(merr)
+// 				} else {
+// 					mapMeta = grid.LoadROSMap(occupancy, 50)
+// 					maxT := grid.MaxTimeLength
+// 					gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
+// 					log.Print("global costmap updated")
+// 					mapMetaUpdate = true
+// 				}
+// 			}
+// 		}
+// 	}
 
-func subsclibeMQQTSupply(client *sxutil.SXServiceClient) {
-	ctx := context.Background()
-	for {
-		client.SubscribeSupply(ctx, mqqtCallback)
-		reconnectClient(client)
-	}
-}
+// }
+
+// func subsclibeMQQTSupply(client *sxutil.SXServiceClient) {
+// 	ctx := context.Background()
+// 	for {
+// 		client.SubscribeSupply(ctx, mqqtCallback)
+// 		reconnectClient(client)
+// 	}
+// }
 
 func reconnectClient(client *sxutil.SXServiceClient) {
 	mu.Lock()
@@ -161,11 +177,58 @@ func reconnectClient(client *sxutil.SXServiceClient) {
 	mu.Unlock()
 }
 
+func handleMqttMessage() {
+	for {
+		msg := <-msgCh
+		if !mapMetaUpdate {
+			log.Print("updating global costmap..")
+			mu.Lock()
+			var occupancy ros.OccupancyGrid
+			merr := json.Unmarshal(msg.Payload(), &occupancy)
+			if merr != nil {
+				log.Print(merr)
+			} else {
+				mapMeta = grid.LoadROSMap(occupancy, 50)
+				maxT := grid.MaxTimeLength
+				gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
+				log.Print("global costmap updated")
+				mapMetaUpdate = true
+			}
+			mu.Unlock()
+		}
+
+	}
+}
+
+// listening MQTT topics.
+func listenMQTTBroker() {
+	var myHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+		msgCh <- msg
+	}
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker("tcp://" + *mqttsrv + ":1883") // currently only 1883 port.
+	//opts.SetDefaultPublishHandler(func(client mqtt.Client, msg mqtt.Message) {
+	//	choke <- [2]string{msg.Topic(), string(msg.Payload())}
+	//m})
+
+	clt := mqtt.NewClient(opts)
+
+	if token := clt.Connect(); token.Wait() && token.Error() != nil {
+		log.Fatalf("MQTT connection error: %s", token.Error())
+	}
+
+	if subscribeToken := clt.Subscribe("map/global_costmap", 0, myHandler); subscribeToken.Wait() && subscribeToken.Error() != nil {
+		log.Fatalf("MQTT subscribe error: %s", subscribeToken.Error())
+	}
+}
+
 func main() {
 	go sxutil.HandleSigInt()
 	wg := sync.WaitGroup{}
 	flag.Parse()
 	sxutil.RegisterDeferFunction(sxutil.UnRegisterNode)
+
+	listenMQTTBroker()
 
 	channels := []uint32{pbase.MQTT_GATEWAY_SVC, pbase.ROUTING_SERVICE}
 	srv, err := sxutil.RegisterNode(*nodesrv, "GeoRoutingProvider", channels, nil)
@@ -190,8 +253,9 @@ func main() {
 	// gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
 
 	log.Print("start subscribing")
+	go handleMqttMessage()
 	go subsclibeRouteSupply(routeClient)
-	go subsclibeMQQTSupply(mqttClient)
+	// go subsclibeMQQTSupply(mqttClient)
 	wg.Add(1)
 	wg.Wait()
 	// sx, sy := 10, 10
