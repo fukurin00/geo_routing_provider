@@ -88,7 +88,11 @@ func MakePathMsg(route [][3]float64) ([]byte, error) {
 		x := route[i][1]
 		y := route[i][2]
 		pos := ROS_PoseStamped{
-			Header: ROS_header{Seq: uint32(i)},
+			Header: ROS_header{
+				Seq:      uint32(i),
+				Stamp:    FtoStamp(route[i][0]),
+				Frame_id: "map",
+			},
 			Pose: Pose{
 				Position: Point{X: x, Y: y, Z: 0.0},
 			},
@@ -97,7 +101,7 @@ func MakePathMsg(route [][3]float64) ([]byte, error) {
 	}
 
 	planm := Path{
-		Header: ROS_header{},
+		Header: ROS_header{Frame_id: "map"},
 		Poses:  poses,
 	}
 
@@ -125,7 +129,7 @@ func MakePathMsg2D(route [][2]float64) ([]byte, error) {
 	}
 
 	planm := Path{
-		Header: ROS_header{},
+		Header: ROS_header{Frame_id: "map"},
 		Poses:  poses,
 	}
 
