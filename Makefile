@@ -16,7 +16,7 @@ TARGET=geo-routing
 build: $(TARGET)
 
 geo-routing: main.go
-	$(GOBUILD)  -ldflags $(LDFLAGS)
+	$(GOBUILD) -o $(TARGET) main.go 
 
 .PHONY: clean
 clean: 
