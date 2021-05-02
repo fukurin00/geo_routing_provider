@@ -3,6 +3,7 @@ module github.com/fukurin00/geo_routing_provider
 go 1.15
 
 require (
+	github.com/Arafatk/glot v0.0.0-20180312013246-79d5219000f0 // indirect
 	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/beefsack/go-astar v0.0.0-20200827232313-4ecf9e304482
 	github.com/eclipse/paho.mqtt.golang v1.3.3 // indirect

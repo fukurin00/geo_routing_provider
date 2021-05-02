@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Arafatk/glot"
 	"github.com/fukurin00/geo_routing_provider/msg"
 	grid "github.com/fukurin00/geo_routing_provider/routing"
 
@@ -262,7 +263,16 @@ func main() {
 		if err != nil {
 			log.Print(err)
 		}
-		objMap := mapMeta.GetObjectMap()
+		objMap, obj2dMap := mapMeta.GetObjectMap()
+		plot, _ := glot.NewPlot(2, false, false)
+		err := plot.AddPointGroup("map", "points", obj2dMap)
+		if err != nil {
+			log.Print(err)
+		}
+		err = plot.SavePlot("map/generated_map.png")
+		if err != nil {
+			log.Print(err)
+		}
 		astarPlanner = astar.NewAstar(objMap, robotRadius, resolution)
 	}
 	// maxT := grid.MaxTimeLength

@@ -68,7 +68,7 @@ func ReadStaticMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, er
 				v = 0
 				open += 1
 			}
-			data[i+j*m.W] = v
+			data[i+(m.H-j-1)*m.W] = v
 		}
 	}
 	log.Printf("open: %d, close: %d", open, close)
@@ -77,8 +77,11 @@ func ReadStaticMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, er
 	return m, nil
 }
 
-func (m MapMeta) GetObjectMap() [][2]float64 {
+func (m MapMeta) GetObjectMap() ([][2]float64, [][]float64) {
 	var objMap [][2]float64
+	var obj2dMap [][]float64
+	var xs []float64
+	var ys []float64
 	insideWall := false
 	for i, pixel := range m.Data {
 		if i%2 != 0 {
@@ -93,9 +96,13 @@ func (m MapMeta) GetObjectMap() [][2]float64 {
 			y := float64(i/m.W)*(m.Reso) + (m.Origin.Y)
 			var oPoint = [2]float64{x, y}
 			objMap = append(objMap, oPoint)
+			xs = append(xs, x)
+			ys = append(ys, y)
 		} else {
 			insideWall = false
 		}
 	}
-	return objMap
+	obj2dMap = append(obj2dMap, xs)
+	obj2dMap = append(obj2dMap, ys)
+	return objMap, obj2dMap
 }
