@@ -112,7 +112,6 @@ func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 			g.ObjectMap[i/width][i%width] = false
 		}
 	}
-	log.Print("load ros data")
 
 	start := time.Now()
 	for j := 0; j < m.H; j++ {
@@ -134,7 +133,7 @@ func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 			}
 		}
 	}
-	elaps := time.Now().Sub(start).Seconds()
+	elaps := time.Since(start).Seconds()
 	log.Printf("load objmap using robot radius takes %f seconds", elaps)
 
 	for i := 0; i < maxT; i++ {
@@ -144,8 +143,9 @@ func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 }
 
 func NewGridMapReso(m MapMeta, maxT int, robotRadius float64, resolution float64, objMap [][2]float64) *GridMap {
+	start := time.Now()
 	g := new(GridMap)
-	g.Resolution = m.Reso
+	g.Resolution = resolution
 
 	var xList []float64
 	var yList []float64
@@ -160,32 +160,38 @@ func NewGridMapReso(m MapMeta, maxT int, robotRadius float64, resolution float64
 	g.Origin.X = MinFloat(xList)
 	g.Origin.Y = MinFloat(yList)
 
-	g.Width = int(math.Round(maxX - g.Origin.X))
-	g.Height = int(math.Round(maxY - g.Origin.Y))
+	g.Width = int(math.Round((maxX - g.Origin.X) / resolution))
+	g.Height = int(math.Round((maxY - g.Origin.Y) / resolution))
 
 	g.MaxT = maxT
-	g.ObjectMap = make([][]bool, m.H)
-	for i := 0; i < m.H; i++ {
-		g.ObjectMap[i] = make([]bool, m.W)
+	g.ObjectMap = make([][]bool, g.Height)
+	for i := 0; i < g.Height; i++ {
+		g.ObjectMap[i] = make([]bool, g.Width)
 	}
-	g.TW = make(TimeObjMap, maxT)
 
+	count := 0
 	for j := 0; j < g.Height; j++ {
 		y := g.Origin.Y + float64(j)*g.Resolution
 		for i := 0; i < g.Width; i++ {
 			x := g.Origin.X + float64(i)*g.Resolution
+			g.ObjectMap[j][i] = false
 			for _, op := range objMap {
 				d := math.Hypot(op[0]-x, op[1]-y)
 				if d <= robotRadius {
 					g.ObjectMap[j][i] = true
+					count += 1
 					break
 				}
 			}
 		}
 	}
+
+	g.TW = make(TimeObjMap, maxT)
 	for i := 0; i < maxT; i++ {
 		g.TW[i] = g.ObjectMap
 	}
+	elaps := time.Since(start).Seconds()
+	log.Printf("loading gridmap resolution: %f, takes: %f seconds, obj %d counts, width: %d, height: %d", resolution, elaps, count, g.Width, g.Height)
 	return g
 }
 

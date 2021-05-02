@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -25,25 +27,30 @@ import (
 	pbase "github.com/synerex/synerex_proto"
 )
 
-var (
-	mode        Mode    = ASTAR3D
-	resolution  float64 = 0.5
+const (
+	resolution  float64 = 0.3
 	robotRadius float64 = 0.35
+	closeThresh float64 = 0.85
 
 	mapFile  string = "map/willow_garage_v_edited.pgm"
 	yamlFile string = "map/willow_garage_v_edited.yaml"
+)
+
+var (
+	mode Mode = ASTAR3D
+
 	mqttsrv         = flag.String("mqtt", "localhost", "MQTT Broker address")
+	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "node serv address")
+	sxServerAddress string
 
 	mapMetaUpdate               = false
 	mapMeta       *grid.MapMeta = nil
 	gridMap       *grid.GridMap = nil
-	//objMap        [][2]float64
-	astarPlanner *astar.Astar
+	astarPlanner  *astar.Astar  //if 2d mode
 
-	mu              sync.Mutex
-	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "node serv address")
-	sxServerAddress string
+	mu sync.Mutex
 
+	//synerex client
 	mqttClient  *sxutil.SXServiceClient
 	routeClient *sxutil.SXServiceClient
 
@@ -60,8 +67,8 @@ func init() {
 type Mode int
 
 const (
-	ASTAR2D Mode = iota
-	ASTAR3D
+	ASTAR2D Mode = iota //normal astar
+	ASTAR3D             //original astar
 )
 
 func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
@@ -132,6 +139,7 @@ func subsclibeRouteSupply(client *sxutil.SXServiceClient) {
 	}
 }
 
+//synerex recconect to client
 func reconnectClient(client *sxutil.SXServiceClient) {
 	mu.Lock()
 	if client.SXClient != nil {
@@ -183,9 +191,6 @@ func listenMQTTBroker() {
 	}
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker("tcp://" + *mqttsrv + ":1883") // currently only 1883 port.
-	//opts.SetDefaultPublishHandler(func(client mqtt.Client, msg mqtt.Message) {
-	//	choke <- [2]string{msg.Topic(), string(msg.Payload())}
-	//m})
 
 	clt := mqtt.NewClient(opts)
 
@@ -198,21 +203,20 @@ func listenMQTTBroker() {
 	}
 }
 
-func main() {
-	go sxutil.HandleSigInt()
-	wg := sync.WaitGroup{}
-	flag.Parse()
-	sxutil.RegisterDeferFunction(sxutil.UnRegisterNode)
+func LoggingSettings(logFile string) {
+	logfile, _ := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	multiLogFile := io.MultiWriter(os.Stdout, logfile)
+	log.SetFlags(log.Ldate | log.Ltime)
+	log.SetOutput(multiLogFile)
+}
 
-	listenMQTTBroker()
-
+func SetupSynerex() {
 	channels := []uint32{pbase.MQTT_GATEWAY_SVC, pbase.ROUTING_SERVICE}
 	srv, err := sxutil.RegisterNode(*nodesrv, "GeoRoutingProvider", channels, nil)
 	if err != nil {
 		log.Fatal("can not registar node")
 	}
 	log.Printf("connectiong server [%s]", srv)
-
 	sxServerAddress = srv
 
 	synerexClient := sxutil.GrpcConnectServer(srv)
@@ -220,41 +224,60 @@ func main() {
 	mqttClient = sxutil.NewSXServiceClient(synerexClient, pbase.MQTT_GATEWAY_SVC, argJson1)
 	argJson2 := "{Client: GeoRoute}"
 	routeClient = sxutil.NewSXServiceClient(synerexClient, pbase.ROUTING_SERVICE, argJson2)
+}
 
+func SetupStaticMap() {
+	mapMeta, err := grid.ReadStaticMapImage(yamlFile, mapFile, closeThresh)
+	if err != nil {
+		log.Print("read map file errore: ", err)
+	}
+	objMap := mapMeta.GetObjectMap()
+	if mode == ASTAR2D {
+		plot2d.AddPointGroup("map", "dots", grid.Convert2DPoint(objMap))
+		plot2d.SavePlot("map/raw_static_map.png")
+		astarPlanner = astar.NewAstar(objMap, robotRadius, resolution)
+		log.Print("load astar obj map")
+	} else if mode == ASTAR3D {
+		maxT := grid.MaxTimeLength
+		gridMap = grid.NewGridMapReso(*mapMeta, maxT, robotRadius, resolution, objMap)
+		err = plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2Point())
+		if err != nil {
+			log.Print("plot add group error: ", err)
+		}
+		err = plot2d.SavePlot("map/static_obj_map.png")
+		if err != nil {
+			log.Print("save map error: ", err)
+		}
+	}
+}
+
+func main() {
+	go sxutil.HandleSigInt()
+	wg := sync.WaitGroup{}
+	flag.Parse()
+	sxutil.RegisterDeferFunction(sxutil.UnRegisterNode)
+
+	//logging configuration
+	now := time.Now()
+	LoggingSettings("log/" + now.Format("2006-01-02-15-4") + ".log")
+
+	// connect to mqtt broker
+	listenMQTTBroker()
+
+	// Synerex Configuration
+	SetupSynerex()
+
+	// visualization configuration
 	plot2d, _ = glot.NewPlot(2, false, false)
 	plot3d, _ = glot.NewPlot(3, false, false)
 
-	mapMeta, err = grid.ReadStaticMapImage(yamlFile, mapFile, 0.65)
-	if err != nil {
-		log.Print(err)
-	}
-	objMap := mapMeta.GetObjectMap()
-	plot, _ := glot.NewPlot(2, false, false)
-	err = plot.AddPointGroup("map", "dots", grid.Convert2DPoint(objMap))
-	if err != nil {
-		log.Print(err)
-	}
-	plot.SavePlot("map/generated_static_map.png")
-	astarPlanner = astar.NewAstar(objMap, robotRadius, resolution)
-	log.Print("load astar obj map")
+	// load static map data
+	SetupStaticMap()
 
-	maxT := grid.MaxTimeLength
-	gridMap = grid.NewGridMap(*mapMeta, maxT, robotRadius)
-	plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2Point())
-	plot2d.SavePlot("map/static_obj_map.png")
-
+	//start main function
 	log.Print("start subscribing")
 	go handleMqttMessage()
 	go subsclibeRouteSupply(routeClient)
-	// go subsclibeMQQTSupply(mqttClient)
 	wg.Add(1)
 	wg.Wait()
-	// sx, sy := 10, 10
-	// gx, gy := 20, 20
-	// route, err := g.Plan(sx, sy, gx, gy)
-	// if err != nil {
-	// 	log.Print(err)
-	// }
-	// r := g.Route2Pos(0.0, route)
-	// log.Print(r)
 }
