@@ -48,6 +48,9 @@ var (
 	routeClient *sxutil.SXServiceClient
 
 	msgCh chan mqtt.Message
+
+	plot2d *glot.Plot
+	plot3d *glot.Plot
 )
 
 func init() {
@@ -205,7 +208,9 @@ func handleMqttMessage() {
 				maxT := grid.MaxTimeLength
 				gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
 				log.Print("global costmap updated")
+				plot2d.AddPointGroup("costmap", "points", gridMap.ConvertObjMap2Point())
 				mapMetaUpdate = true
+				plot2d.SavePlot("map/global_costmap.png")
 			}
 			mu.Unlock()
 		}
@@ -258,18 +263,21 @@ func main() {
 	argJson2 := "{Client: GeoRoute}"
 	routeClient = sxutil.NewSXServiceClient(synerexClient, pbase.ROUTING_SERVICE, argJson2)
 
+	plot2d, _ = glot.NewPlot(2, false, false)
+	plot3d, _ = glot.NewPlot(3, false, false)
+
 	if mode == ASTAR2D {
 		mapMeta, err = grid.ReadStaticMapImage(yamlFile, mapFile, 230)
 		if err != nil {
 			log.Print(err)
 		}
-		objMap, obj2dMap := mapMeta.GetObjectMap()
+		objMap := mapMeta.GetObjectMap()
 		plot, _ := glot.NewPlot(2, false, false)
-		err := plot.AddPointGroup("map", "points", obj2dMap)
+		err := plot.AddPointGroup("map", "points", grid.Convert2DPoint(objMap))
 		if err != nil {
 			log.Print(err)
 		}
-		err = plot.SavePlot("map/generated_map.png")
+		err = plot.SavePlot("map/generated_static_map.png")
 		if err != nil {
 			log.Print(err)
 		}
