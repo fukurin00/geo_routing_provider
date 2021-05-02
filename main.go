@@ -39,6 +39,7 @@ const (
 var (
 	mode Mode = ASTAR3D
 
+	vizroute        = flag.Bool("visualize", true, "whether visualize route")
 	mqttsrv         = flag.String("mqtt", "localhost", "MQTT Broker address")
 	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "node serv address")
 	sxServerAddress string
@@ -93,6 +94,12 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 			log.Print(err)
 		} else {
 			route := gridMap.Route2Pos(0, routei)
+			if *vizroute {
+				plot2d.AddPointGroup("route", "points", grid.Convert32DPoint(route))
+				plot2d.SavePlot("route/route2D.png")
+				plot3d.AddPointGroup("route", "points", grid.Convert3DPoint(route))
+				plot3d.SavePlot("route/route3D.png")
+			}
 			jsonPayload, err = msg.MakePathMsg(route)
 			if err != nil {
 				log.Print(err)
@@ -240,14 +247,10 @@ func SetupStaticMap() {
 	} else if mode == ASTAR3D {
 		maxT := grid.MaxTimeLength
 		gridMap = grid.NewGridMapReso(*mapMeta, maxT, robotRadius, resolution, objMap)
-		err = plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2Point())
-		if err != nil {
-			log.Print("plot add group error: ", err)
-		}
-		err = plot2d.SavePlot("map/static_obj_map.png")
-		if err != nil {
-			log.Print("save map error: ", err)
-		}
+		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2Point())
+		plot2d.SavePlot("map/static_obj_map.png")
+		plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3Point())
+		plot3d.SetZrange(0, maxT)
 	}
 }
 
@@ -273,6 +276,20 @@ func main() {
 
 	// load static map data
 	SetupStaticMap()
+
+	isx, isy := gridMap.Pos2Ind(0, 0)
+	igx, igy := gridMap.Pos2Ind(30, 5)
+
+	routei, err := gridMap.Plan(isx, isy, igx, igy)
+	if err != nil {
+		log.Print(err)
+	} else {
+		route := gridMap.Route2Pos(0, routei)
+		plot2d.AddPointGroup("route", "points", grid.Convert32DPoint(route))
+		plot2d.SavePlot("route/test_route2D.png")
+		plot3d.AddPointGroup("route", "points", grid.Convert3DPoint(route))
+		plot3d.SavePlot("route/test_route3D.png")
+	}
 
 	//start main function
 	log.Print("start subscribing")

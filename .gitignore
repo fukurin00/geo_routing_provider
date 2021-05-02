@@ -3,3 +3,4 @@ main
 geo-routing
 log/
 .DS_Store
+*.png

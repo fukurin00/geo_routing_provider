@@ -57,8 +57,6 @@ func NewIndexT(t, x, y int) *IndexT {
 }
 
 // type CostMap map[Index]uint8
-type TimeCostMap []CostMap
-type CostMap [][]int8
 type TimeObjMap [][][]bool
 
 type GridMap struct {
@@ -233,9 +231,9 @@ func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
 	for {
 		count += 1
 		if len(openSet) == 0 {
-			elaps := time.Now().Sub(startTime).Seconds()
+			elaps := time.Since(startTime).Seconds()
 			log.Print(current.T, current.XId, current.YId, count, elaps)
-			oerr = errors.New("path planning error: open set is empty...")
+			oerr = errors.New("path planning error: open set is empty")
 			return nil, oerr
 		}
 
