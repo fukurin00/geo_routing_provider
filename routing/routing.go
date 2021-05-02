@@ -2,6 +2,7 @@ package routing
 
 import (
 	"errors"
+	"sort"
 
 	"log"
 	"math"
@@ -128,6 +129,7 @@ func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 				d := math.Hypot(x-op[0], y-op[1])
 				if d <= robotRadius {
 					g.ObjectMap[j][i] = true
+					break
 				}
 			}
 		}
@@ -139,6 +141,62 @@ func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 		g.TW[i] = g.ObjectMap
 	}
 	return g
+}
+
+func NewGridMapReso(m MapMeta, maxT int, robotRadius float64, resolution float64, objMap [][2]float64) *GridMap {
+	g := new(GridMap)
+	g.Resolution = m.Reso
+
+	var xList []float64
+	var yList []float64
+
+	for _, obj := range objMap {
+		xList = append(xList, obj[0])
+		yList = append(yList, obj[1])
+	}
+
+	maxX := MaxFloat(xList)
+	maxY := MaxFloat(yList)
+	g.Origin.X = MinFloat(xList)
+	g.Origin.Y = MinFloat(yList)
+
+	g.Width = int(math.Round(maxX - g.Origin.X))
+	g.Height = int(math.Round(maxY - g.Origin.Y))
+
+	g.MaxT = maxT
+	g.ObjectMap = make([][]bool, m.H)
+	for i := 0; i < m.H; i++ {
+		g.ObjectMap[i] = make([]bool, m.W)
+	}
+	g.TW = make(TimeObjMap, maxT)
+
+	for j := 0; j < g.Height; j++ {
+		y := g.Origin.Y + float64(j)*g.Resolution
+		for i := 0; i < g.Width; i++ {
+			x := g.Origin.X + float64(i)*g.Resolution
+			for _, op := range objMap {
+				d := math.Hypot(op[0]-x, op[1]-y)
+				if d <= robotRadius {
+					g.ObjectMap[j][i] = true
+					break
+				}
+			}
+		}
+	}
+	for i := 0; i < maxT; i++ {
+		g.TW[i] = g.ObjectMap
+	}
+	return g
+}
+
+func MinFloat(a []float64) float64 {
+	sort.Float64s(a)
+	return a[0]
+}
+
+func MaxFloat(a []float64) float64 {
+	sort.Float64s(a)
+	return a[len(a)-1]
 }
 
 func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
