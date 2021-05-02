@@ -1,15 +1,3 @@
-/*
-	briaf:
-		routing multiple robots using time scale consideration
-
-	subscribe:
-		position
-		routeRequest
-
-	publish:
-		path
-*/
-
 package main
 
 import (
@@ -31,18 +19,25 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	astar "github.com/fukurin00/astar_golang"
 	ros "github.com/fukurin00/go_ros_msg"
 	pbase "github.com/synerex/synerex_proto"
 )
 
 var (
-	// mapFile  string = "map/willow_garage_v_edited.pgm"
-	// yamlFile string = "map/willow_garage_v_edited.yaml"
-	mqttsrv = flag.String("mqtt", "localhost", "MQTT Broker address")
+	mode        Mode    = ASTAR2D
+	resolution  float64 = 0.5
+	robotRadius float64 = 0.3
+
+	mapFile  string = "map/willow_garage_v_edited.pgm"
+	yamlFile string = "map/willow_garage_v_edited.yaml"
+	mqttsrv         = flag.String("mqtt", "localhost", "MQTT Broker address")
 
 	mapMetaUpdate               = false
 	mapMeta       *grid.MapMeta = nil
 	gridMap       *grid.GridMap = nil
+	//objMap        [][2]float64
+	astarPlanner *astar.Astar
 
 	mu              sync.Mutex
 	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "node serv address")
@@ -58,6 +53,13 @@ func init() {
 	msgCh = make(chan mqtt.Message)
 }
 
+type Mode int
+
+const (
+	ASTAR2D Mode = iota
+	ASTAR3D
+)
+
 func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 	rcd := &cav.DestinationRequest{}
 	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
@@ -65,43 +67,56 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 		log.Print(err)
 	}
 	log.Printf("receive dest request robot%d", rcd.RobotId)
-	if gridMap == nil {
-		log.Print("not receive gridMap yet ...")
-		return
-	}
-	isx, isy := gridMap.Pos2Ind(float64(rcd.Current.X), float64(rcd.Current.Y))
-	igx, igy := gridMap.Pos2Ind(float64(rcd.Destination.X), float64(rcd.Destination.Y))
 
-	routei, err := gridMap.Plan(isx, isy, igx, igy)
-	if err != nil {
-		log.Print(err)
-	} else {
-		route := gridMap.Route2Pos(0, routei)
+	var jsonPayload []byte
+	if mode == ASTAR3D {
+		if gridMap == nil {
+			log.Print("not receive gridMap yet ...")
+			return
+		}
+		isx, isy := gridMap.Pos2Ind(float64(rcd.Current.X), float64(rcd.Current.Y))
+		igx, igy := gridMap.Pos2Ind(float64(rcd.Destination.X), float64(rcd.Destination.Y))
 
-		jsonPayload, err := msg.MakePathMsg(route)
-		if err != nil {
-			log.Print(err)
-		}
-		topic := fmt.Sprintf("robot/path/%d", rcd.RobotId)
-		mqttProt := sxmqtt.MQTTRecord{
-			Topic:  topic,
-			Record: jsonPayload,
-		}
-		out, err := proto.Marshal(&mqttProt)
-		if err != nil {
-			log.Print(err)
-		}
-		cout := api.Content{Entity: out}
-		smo := sxutil.SupplyOpts{
-			Name:  "robotRoute",
-			Cdata: &cout,
-		}
-		_, err = mqttClient.NotifySupply(&smo)
+		routei, err := gridMap.Plan(isx, isy, igx, igy)
 		if err != nil {
 			log.Print(err)
 		} else {
-			log.Printf("send path robot %d", rcd.RobotId)
+			route := gridMap.Route2Pos(0, routei)
+			jsonPayload, err = msg.MakePathMsg(route)
+			if err != nil {
+				log.Print(err)
+			}
 		}
+	} else if mode == ASTAR2D {
+		route, err := astarPlanner.Plan(float64(rcd.Current.X), float64(rcd.Current.Y), float64(rcd.Destination.X), float64(rcd.Destination.Y))
+		if err != nil {
+			log.Print(err)
+		} else {
+			jsonPayload, err = msg.MakePathMsg2D(route)
+			if err != nil {
+				log.Print(err)
+			}
+		}
+	}
+	topic := fmt.Sprintf("robot/path/%d", rcd.RobotId)
+	mqttProt := sxmqtt.MQTTRecord{
+		Topic:  topic,
+		Record: jsonPayload,
+	}
+	out, err := proto.Marshal(&mqttProt)
+	if err != nil {
+		log.Print(err)
+	}
+	cout := api.Content{Entity: out}
+	smo := sxutil.SupplyOpts{
+		Name:  "robotRoute",
+		Cdata: &cout,
+	}
+	_, err = mqttClient.NotifySupply(&smo)
+	if err != nil {
+		log.Print(err)
+	} else {
+		log.Printf("send path robot %d", rcd.RobotId)
 	}
 }
 
@@ -242,10 +257,14 @@ func main() {
 	argJson2 := "{Client: GeoRoute}"
 	routeClient = sxutil.NewSXServiceClient(synerexClient, pbase.ROUTING_SERVICE, argJson2)
 
-	// mapMeta, err = grid.ReadStaticMapImage(yamlFile, mapFile, 230)
-	// if err != nil {
-	// 	log.Print(err)
-	// }
+	if mode == ASTAR2D {
+		mapMeta, err = grid.ReadStaticMapImage(yamlFile, mapFile, 230)
+		if err != nil {
+			log.Print(err)
+		}
+		objMap := mapMeta.GetObjectMap()
+		astarPlanner = astar.NewAstar(objMap, robotRadius, resolution)
+	}
 	// maxT := grid.MaxTimeLength
 	// gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
 

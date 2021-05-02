@@ -108,3 +108,31 @@ func MakePathMsg(route [][3]float64) ([]byte, error) {
 	return jm, err
 
 }
+
+func MakePathMsg2D(route [][2]float64) ([]byte, error) {
+	var poses []ROS_PoseStamped
+
+	for i := 0; i < len(route); i++ {
+		x := route[i][0]
+		y := route[i][1]
+		pos := ROS_PoseStamped{
+			Header: ROS_header{Seq: uint32(i)},
+			Pose: Pose{
+				Position: Point{X: x, Y: y, Z: 0.0},
+			},
+		}
+		poses = append(poses, pos)
+	}
+
+	planm := Path{
+		Header: ROS_header{},
+		Poses:  poses,
+	}
+
+	jm, err := json.MarshalIndent(planm, "", " ")
+	if err != nil {
+		return jm, err
+	}
+	return jm, err
+
+}

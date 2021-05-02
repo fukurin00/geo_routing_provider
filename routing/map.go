@@ -59,9 +59,9 @@ func ReadStaticMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, er
 			pixel := color.GrayModel.Convert(oldPix)
 			pixelU := color.GrayModel.Convert(pixel).(color.Gray).Y
 
-			a := pixelU
+			a := (255.0 - float64(pixelU)) / 255.0
 			var v int8 = 0
-			if a > uint8(closeThreth) {
+			if a > 0.9 {
 				v = 100
 				close += 1
 			} else {
@@ -85,7 +85,7 @@ func (m MapMeta) GetObjectMap() [][2]float64 {
 			continue
 		}
 
-		if pixel == 0 {
+		if pixel >= 90 {
 			if insideWall {
 				continue
 			}
