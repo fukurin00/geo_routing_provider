@@ -260,7 +260,14 @@ func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
 			goal.Cost = current.Cost
 			endTime := time.Now()
 			elaps := endTime.Sub(startTime)
-			log.Printf("takes %f seconds, count is %d", elaps.Seconds(), count)
+			log.Printf("planning (%f, %f) to (%f, %f) takes %f seconds, count is %d",
+				m.Origin.X+float64(sx)*m.Resolution,
+				m.Origin.Y+float64(sy)*m.Resolution,
+				m.Origin.X+float64(gx)*m.Resolution,
+				m.Origin.Y+float64(gy)*m.Resolution,
+				elaps.Seconds(),
+				count,
+			)
 			return m.finalPath(goal, closeSetT)
 		}
 
