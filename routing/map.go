@@ -29,7 +29,7 @@ func LoadROSMap(grid ros.OccupancyGrid, closeThreth int) *MapMeta {
 }
 
 // read image file of ROS format
-func ReadStaticMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, error) {
+func ReadStaticMapImage(yamlFile, mapFile string, closeThreth float64) (*MapMeta, error) {
 	m := new(MapMeta)
 	mapConfig := ReadImageYaml(yamlFile)
 	m.Reso = mapConfig.Resolution
@@ -61,7 +61,7 @@ func ReadStaticMapImage(yamlFile, mapFile string, closeThreth int) (*MapMeta, er
 
 			a := (255.0 - float64(pixelU)) / 255.0
 			var v int8 = 0
-			if a > 0.9 {
+			if a > closeThreth {
 				v = 100
 				close += 1
 			} else {
@@ -81,9 +81,6 @@ func (m MapMeta) GetObjectMap() [][2]float64 {
 	var objMap [][2]float64
 	insideWall := false
 	for i, pixel := range m.Data {
-		if i%2 != 0 {
-			continue
-		}
 
 		if pixel >= 90 {
 			if insideWall {

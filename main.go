@@ -26,9 +26,9 @@ import (
 )
 
 var (
-	mode        Mode    = ASTAR2D
+	mode        Mode    = ASTAR3D
 	resolution  float64 = 0.5
-	robotRadius float64 = 0.3
+	robotRadius float64 = 0.35
 
 	mapFile  string = "map/willow_garage_v_edited.pgm"
 	yamlFile string = "map/willow_garage_v_edited.yaml"
@@ -132,48 +132,6 @@ func subsclibeRouteSupply(client *sxutil.SXServiceClient) {
 	}
 }
 
-// func mqqtCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
-// 	if sp.SenderId == uint64(clt.ClientID) {
-// 		return
-// 	}
-
-// 	rcd := &sxmqtt.MQTTRecord{}
-// 	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
-// 	if err != nil {
-// 		log.Print(err)
-// 	}
-
-// 	if strings.HasPrefix(rcd.Topic, "map/") {
-// 		if strings.HasPrefix(rcd.Topic, "map/global_costmap") {
-// 			if !mapMetaUpdate {
-// 				log.Print("updating global costmap..")
-// 				mu.Lock()
-// 				defer mu.Unlock()
-// 				var occupancy ros.OccupancyGrid
-// 				merr := json.Unmarshal(rcd.Record, &occupancy)
-// 				if merr != nil {
-// 					log.Print(merr)
-// 				} else {
-// 					mapMeta = grid.LoadROSMap(occupancy, 50)
-// 					maxT := grid.MaxTimeLength
-// 					gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
-// 					log.Print("global costmap updated")
-// 					mapMetaUpdate = true
-// 				}
-// 			}
-// 		}
-// 	}
-
-// }
-
-// func subsclibeMQQTSupply(client *sxutil.SXServiceClient) {
-// 	ctx := context.Background()
-// 	for {
-// 		client.SubscribeSupply(ctx, mqqtCallback)
-// 		reconnectClient(client)
-// 	}
-// }
-
 func reconnectClient(client *sxutil.SXServiceClient) {
 	mu.Lock()
 	if client.SXClient != nil {
@@ -206,9 +164,9 @@ func handleMqttMessage() {
 			} else {
 				mapMeta = grid.LoadROSMap(occupancy, 50)
 				maxT := grid.MaxTimeLength
-				gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
+				gridMap = grid.NewGridMap(*mapMeta, maxT, robotRadius)
 				log.Print("global costmap updated")
-				plot2d.AddPointGroup("costmap", "points", gridMap.ConvertObjMap2Point())
+				plot2d.AddPointGroup("costmap", "dots", gridMap.ConvertObjMap2Point())
 				mapMetaUpdate = true
 				plot2d.SavePlot("map/global_costmap.png")
 			}
@@ -266,25 +224,24 @@ func main() {
 	plot2d, _ = glot.NewPlot(2, false, false)
 	plot3d, _ = glot.NewPlot(3, false, false)
 
-	if mode == ASTAR2D {
-		mapMeta, err = grid.ReadStaticMapImage(yamlFile, mapFile, 230)
-		if err != nil {
-			log.Print(err)
-		}
-		objMap := mapMeta.GetObjectMap()
-		plot, _ := glot.NewPlot(2, false, false)
-		err := plot.AddPointGroup("map", "points", grid.Convert2DPoint(objMap))
-		if err != nil {
-			log.Print(err)
-		}
-		err = plot.SavePlot("map/generated_static_map.png")
-		if err != nil {
-			log.Print(err)
-		}
-		astarPlanner = astar.NewAstar(objMap, robotRadius, resolution)
+	mapMeta, err = grid.ReadStaticMapImage(yamlFile, mapFile, 0.65)
+	if err != nil {
+		log.Print(err)
 	}
-	// maxT := grid.MaxTimeLength
-	// gridMap = grid.NewGridMap(mapMeta.Reso, mapMeta.Origin, maxT, mapMeta.W, mapMeta.H, mapMeta.Data)
+	objMap := mapMeta.GetObjectMap()
+	plot, _ := glot.NewPlot(2, false, false)
+	err = plot.AddPointGroup("map", "dots", grid.Convert2DPoint(objMap))
+	if err != nil {
+		log.Print(err)
+	}
+	plot.SavePlot("map/generated_static_map.png")
+	astarPlanner = astar.NewAstar(objMap, robotRadius, resolution)
+	log.Print("load astar obj map")
+
+	maxT := grid.MaxTimeLength
+	gridMap = grid.NewGridMap(*mapMeta, maxT, robotRadius)
+	plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2Point())
+	plot2d.SavePlot("map/static_obj_map.png")
 
 	log.Print("start subscribing")
 	go handleMqttMessage()

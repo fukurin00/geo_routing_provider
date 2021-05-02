@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	CloseThreth       uint8 = 90      //これより大きいと通れない  [0,100]
-	MaxTimeLength     int   = 1000000 //これ以上のtを計算しない
-	MaxSearchTimeStep int   = 1000    //これ以上先の時間を計算しない
+	CloseThreth       int8 = 90     //これより大きいと通れない  [0,100]
+	MaxTimeLength     int  = 100000 //これ以上のtを計算しない
+	MaxSearchTimeStep int  = 1000   //これ以上先の時間を計算しない
 )
 
 type Point struct {
@@ -58,6 +58,7 @@ func NewIndexT(t, x, y int) *IndexT {
 // type CostMap map[Index]uint8
 type TimeCostMap []CostMap
 type CostMap [][]int8
+type TimeObjMap [][][]bool
 
 type GridMap struct {
 	Resolution float64
@@ -65,7 +66,7 @@ type GridMap struct {
 	Width      int
 	Height     int
 
-	TW        TimeCostMap
+	TW        TimeObjMap
 	MaxT      int
 	ObjectMap [][]bool //元からある障害物ならTrue
 }
@@ -86,44 +87,56 @@ func (g GridMap) Pos2Ind(x, y float64) (int, int) {
 	return xid, yid
 }
 
-func NewGridMap(reso float64, origin Point, maxT, width, height int, data []int8) *GridMap {
+func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 	g := new(GridMap)
-	g.Resolution = reso
-	g.Origin = origin
-	g.Width = width
-	g.Height = height
+	g.Resolution = m.Reso
+	g.Origin = m.Origin
+	g.Width = m.W
+	g.Height = m.H
 	g.MaxT = maxT
-	g.TW = []CostMap{}
-	g.ObjectMap = make([][]bool, height)
-	g.TW = make(TimeCostMap, maxT)
+	g.ObjectMap = make([][]bool, m.H)
+	for i := 0; i < m.H; i++ {
+		g.ObjectMap[i] = make([]bool, m.W)
+	}
+	g.TW = make(TimeObjMap, maxT)
 
-	line := make([]int8, width)
-	grid := make([][]int8, height)
-	objLine := make([]bool, width)
-	for i, d := range data {
+	width := m.W
+
+	var objList [][2]float64
+	for i, d := range m.Data {
 		if d > int8(CloseThreth) {
-			objLine[i%width] = true
+			g.ObjectMap[i/width][i%width] = true
+			objList = append(objList, [2]float64{m.Origin.X + float64(i%width)*m.Reso, m.Origin.Y + float64(i/width)*m.Reso})
 		} else {
-			objLine[i%width] = false
-		}
-		line[i%width] = d
-		if i%width == width-1 {
-			grid[i/width] = line
-			line = make([]int8, width)
-			g.ObjectMap[i/width] = objLine
-			objLine = make([]bool, width)
+			g.ObjectMap[i/width][i%width] = false
 		}
 	}
+	log.Print("load ros data")
 
-	// var prx, pry int
+	start := time.Now()
+	for j := 0; j < m.H; j++ {
+		if j%2 == 1 {
+			continue
+		}
+		y := g.Origin.Y + float64(j)*m.Reso
+		for i := 0; i < m.W; i++ {
+			if i%2 == 1 {
+				continue
+			}
+			x := m.Origin.X + float64(i)*m.Reso
+			for _, op := range objList {
+				d := math.Hypot(x-op[0], y-op[1])
+				if d <= robotRadius {
+					g.ObjectMap[j][i] = true
+				}
+			}
+		}
+	}
+	elaps := time.Now().Sub(start).Seconds()
+	log.Printf("load objmap using robot radius takes %f seconds", elaps)
+
 	for i := 0; i < maxT; i++ {
-		// rx := rand.Intn(width)
-		// ry := rand.Intn(height)
-		// grid[ry][rx] = 100
-		// grid[pry][prx] = 0
-		// prx = rx
-		// pry = ry
-		g.TW[i] = grid
+		g.TW[i] = g.ObjectMap
 	}
 	return g
 }
@@ -132,11 +145,11 @@ func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
 	startTime := time.Now()
 
 	if m.ObjectMap[gy][gx] {
-		oerr = errors.New("path planning error: goal is not verified...")
+		oerr = errors.New("path planning error: goal is not verified")
 		return nil, oerr
 	}
 	if m.ObjectMap[sy][sx] {
-		oerr = errors.New("path planning error: start point is not verified...")
+		oerr = errors.New("path planning error: start point is not verified")
 		return nil, oerr
 	}
 	start := &Node{T: 0, XId: sx, YId: sy, Cost: 0, Parent: nil}
@@ -297,11 +310,11 @@ func (n *Node) Around(g *GridMap, minTime int) []*Node {
 
 		mCost := g.TW[aT][aY][aX]
 		//通れないコストマップは外す
-		if mCost > int8(CloseThreth) {
+		if mCost {
 			continue
 		}
 
-		node := n.NewNode(aT, aX, aY, n.Cost+m[3]+float64(mCost)/10) //要修正
+		node := n.NewNode(aT, aX, aY, n.Cost+m[3]) //要修正
 		around = append(around, node)
 	}
 	return around
