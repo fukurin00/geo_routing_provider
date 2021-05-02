@@ -250,7 +250,6 @@ func SetupStaticMap() {
 		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2Point())
 		plot2d.SavePlot("map/static_obj_map.png")
 		plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3Point())
-		plot3d.SetZrange(0, maxT)
 	}
 }
 
@@ -288,6 +287,7 @@ func main() {
 		plot2d.AddPointGroup("route", "points", grid.Convert32DPoint(route))
 		plot2d.SavePlot("route/test_route2D.png")
 		plot3d.AddPointGroup("route", "points", grid.Convert3DPoint(route))
+		//plot3d.SetZrange(0, routei[len(routei)-1][0])
 		plot3d.SavePlot("route/test_route3D.png")
 	}
 
