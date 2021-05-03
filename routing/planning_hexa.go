@@ -1,6 +1,7 @@
 package routing
 
 import (
+	"errors"
 	"log"
 	"math"
 	"time"
@@ -78,4 +79,198 @@ func getXAB(a, b float64) float64 {
 
 func getYAB(a, b float64) float64 {
 	return a/2 - b/2
+}
+
+func (g GridMap) Pos2IndHexa(x, y float64) (int, int) {
+	if x < g.MapOrigin.X || y < g.MapOrigin.Y {
+		log.Printf("position (%f,%f) is out of map", x, y)
+		return 0, 0
+	}
+	a := getA(x, y)
+	b := getB(x, y)
+	xid := int(math.Round((a - g.Origin.X) / g.Resolution))
+	yid := int(math.Round((b - g.Origin.Y) / g.Resolution))
+	return xid, yid
+}
+
+func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][3]int, oerr error) {
+	startTime := time.Now()
+	sx := int(getXAB(float64(sa), float64(sb)))
+	sy := int(getYAB(float64(sa), float64(sb)))
+	gx := int(getXAB(float64(ga), float64(gb)))
+	gy := int(getYAB(float64(ga), float64(gb)))
+
+	//timeStep := m.Resolution/v + 2*math.Pi/3/w // L/v + 2pi/3w  120度回転したときの一番かかる時間
+	log.Printf("starat planning (%f, %f) to (%f, %f)",
+		m.MapOrigin.X+float64(sx)*m.Resolution,
+		m.MapOrigin.Y+float64(sy)*m.Resolution,
+		m.MapOrigin.X+float64(gx)*m.Resolution,
+		m.MapOrigin.Y+float64(gy)*m.Resolution,
+	)
+
+	if m.ObjectMap[gb][ga] {
+		oerr = errors.New("path planning error: goal is not verified")
+		return nil, oerr
+	}
+	if m.ObjectMap[sb][sa] {
+		oerr = errors.New("path planning error: start point is not verified")
+		return nil, oerr
+	}
+	start := &Node{T: 0, XId: sa, YId: sb, Cost: 0, Parent: nil}
+	goal := &Node{T: 0, XId: ga, YId: gb, Cost: 0, Parent: nil}
+
+	openSet := make(map[IndexT]*Node)
+
+	closeSet := make(map[Index]*Node)
+	closeSetT := make(map[IndexT]*Node)
+
+	openSet[nodeIndexT(start)] = start
+
+	count := 0
+	current := &Node{T: 0}
+	var minTime int
+
+	for {
+		count += 1
+		// failure
+		if len(openSet) == 0 {
+			elaps := time.Since(startTime).Seconds()
+			log.Print(current.T, current.XId, current.YId, count, elaps)
+			oerr = errors.New("path planning error: open set is empty")
+			return nil, oerr
+		}
+
+		// get minimum cost node in open set
+		minCost := 9999999999999999999.9
+		minTime = 99999999999999999
+		var minKey IndexT
+		for key, val := range openSet {
+			calCost := val.Cost + heuristic(goal, val)/v // length to goal / vel
+			if calCost < minCost {
+				minCost = calCost
+				minKey = key
+			}
+			if val.T < minTime {
+				minTime = val.T
+			}
+		}
+		current = openSet[minKey]
+
+		// find Goal
+		if current.XId == ga && current.YId == gb {
+			log.Print("find goal")
+			goal.Parent = current.Parent
+			goal.Cost = current.Cost
+			goal.T = current.T
+			elaps := time.Since(startTime).Seconds()
+			log.Printf("planning (%f, %f) to (%f, %f) takes %f seconds, count is %d",
+				m.MapOrigin.X+float64(sx)*m.Resolution,
+				m.MapOrigin.Y+float64(sy)*m.Resolution,
+				m.MapOrigin.X+float64(gx)*m.Resolution,
+				m.MapOrigin.Y+float64(gy)*m.Resolution,
+				elaps,
+				count,
+			)
+			return m.finalPath(goal, closeSetT), nil
+		}
+
+		delete(openSet, minKey)
+		closeSet[nodeIndex(current)] = current
+		closeSetT[nodeIndexT(current)] = current
+
+		around := current.AroundHexa(&m, minTime, v, w, timeStep)
+		for _, an := range around {
+			indT := nodeIndexT(an)
+			ind := nodeIndex(an)
+
+			// すでに通った道を戻るのはだめ
+			if val, ok := closeSet[ind]; ok {
+				// ただし、止まる場合を除く
+				if val.XId != an.XId || val.YId != an.YId {
+					continue
+				}
+			}
+
+			if _, ok := openSet[indT]; !ok {
+				openSet[indT] = an
+			}
+		}
+	}
+}
+
+func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64) []*Node {
+
+	var diffA int
+	var diffB int
+	if n.Parent != nil {
+		diffA = n.XId - n.Parent.XId
+		diffB = n.YId - n.Parent.YId
+	}
+
+	cost1 := g.Resolution / v
+	// [time, x, y, cost]
+	motion := [7][4]float64{
+		{1.0, 0.0, 0.0, timeStep}, //stay 要修正
+		{0.0, 1.0, 0.0, cost1},
+		{0.0, 0.0, 1.0, cost1},
+		{0.0, -1.0, 1.0, cost1},
+		{0.0, -1.0, 0.0, cost1},
+		{0.0, 0.0, -1.0, cost1},
+		{0.0, 1.0, -1.0, cost1},
+	}
+	var around []*Node
+	for i, m := range motion {
+		aX := n.XId + int(m[1])
+		aY := n.YId + int(m[2])
+		aT := n.T + int(m[0]) + 1
+
+		//時間コストマップ外の時間は外す
+		if aT >= g.MaxT {
+			continue
+		}
+
+		//map外のノードは外す
+		if aX < 0 || aX >= g.Width {
+			continue
+		}
+		if aY < 0 || aY >= g.Height {
+			continue
+		}
+
+		//元から障害物で通れないところは外す
+		if g.ObjectMap[aY][aX] {
+			continue
+		}
+
+		//ロボットがいて通れないところは外す
+		if g.TW[aT][aY][aX] {
+			continue
+		}
+
+		var newCost float64
+		// stay してないとき
+		if diffA != 0 && diffB != 0 && i != 0 {
+			// 前のグリッドからそのまま直進できるならコスト少なめ
+			if m[1] == float64(diffA) && m[2] == float64(diffB) {
+				newCost = n.Cost + m[3]
+
+			} else {
+				// 回転が必要なら回転分のコストを加える
+				newCost = n.Cost + m[3] + math.Pi/w/3
+			}
+		}
+
+		node := n.NewNode(aT, aX, aY, newCost)
+
+		// MaxStopCount以上止まりすぎはだめ
+		if i == 0 {
+			node.StopCount = n.StopCount + 1
+			if node.StopCount > MaxStopCount {
+				continue
+			}
+		}
+
+		around = append(around, node)
+	}
+	return around
 }

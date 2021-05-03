@@ -13,7 +13,7 @@ const (
 
 	MaxSearchTimeStep int = 1000 //これ以上先の時間を計算しない
 
-	TimeStep float64 = 1.0 //時間ステップの幅 (second)
+	MaxStopCount int = 30
 )
 
 type Point struct {

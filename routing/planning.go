@@ -164,7 +164,8 @@ type Node struct {
 	XId int
 	YId int
 
-	Cost float64
+	Cost      float64
+	StopCount int
 
 	Parent *Node
 }
@@ -176,6 +177,7 @@ func (s *Node) NewNode(t, x, y int, cost float64) *Node {
 	n.YId = y
 	n.Parent = s
 	n.Cost = cost
+	n.StopCount = 0
 	return n
 }
 
