@@ -13,7 +13,7 @@ const (
 
 	MaxSearchTimeStep int = 1000 //これ以上先の時間を計算しない
 
-	MaxStopCount int = 30
+	MaxStopCount int = 10 //これ以上ストップしない
 )
 
 type Point struct {
@@ -61,6 +61,7 @@ func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 	g := new(GridMap)
 	g.Resolution = m.Reso
 	g.Origin = m.Origin
+	g.MapOrigin = m.Origin
 	g.Width = m.W
 	g.Height = m.H
 	g.MaxT = maxT
@@ -118,6 +119,7 @@ func NewGridMapReso(m MapMeta, maxT int, robotRadius float64, resolution float64
 	start := time.Now()
 	g := new(GridMap)
 	g.Resolution = resolution
+	g.MapOrigin = m.Origin
 
 	var xList []float64
 	var yList []float64

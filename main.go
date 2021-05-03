@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/Arafatk/glot"
 	"github.com/fukurin00/geo_routing_provider/msg"
 	grid "github.com/fukurin00/geo_routing_provider/routing"
+	"github.com/fukurin00/glot"
 
 	cav "github.com/synerex/proto_cav"
 	sxmqtt "github.com/synerex/proto_mqtt"
@@ -29,8 +30,10 @@ import (
 
 const (
 	// resolution  float64 = 0.4
-	robotRadius float64 = 0.35
-	closeThresh float64 = 0.85
+	robotRadius      float64 = 0.35
+	closeThresh      float64 = 0.85
+	robotVelocity    float64 = 1.0 // [m/sec]
+	robotRotVelocity float64 = 1.0 // [rad/sec]
 
 	mapFile  string = "map/willow_garage_v_edited.pgm"
 	yamlFile string = "map/willow_garage_v_edited.yaml"
@@ -61,11 +64,16 @@ var (
 
 	plot2d *glot.Plot
 	plot3d *glot.Plot
+
+	timeStep float64 //計算に使う1stepの秒数
 )
 
 func init() {
 	msgCh = make(chan mqtt.Message)
 	vizCh = make(chan vizOpt)
+
+	reso := *resolution
+	timeStep = reso/robotVelocity + 2*math.Pi/3/robotRotVelocity // L/v + 2pi/3w  120度回転したときの一番かかる時間
 }
 
 type vizOpt struct {
@@ -81,16 +89,37 @@ const (
 	ASTAR3DHEXA             //original hexa astar
 )
 
-func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
-	rcd := &cav.DestinationRequest{}
-	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
-	if err != nil {
-		log.Print(err)
-	}
-	log.Printf("receive dest request robot%d", rcd.RobotId)
+func (m Mode) String() string {
+	s := [3]string{"Astar2D", "Astar3D", "HexaAstar3d"}
+	return s[m]
+}
 
+func routing(rcd *cav.DestinationRequest) {
 	var jsonPayload []byte
-	if mode == ASTAR3D {
+	if mode == ASTAR3DHEXA {
+		if gridMap == nil {
+			log.Print("not receive gridMap yet ...")
+			return
+		}
+		isa, isb := gridMap.Pos2IndHexa(float64(rcd.Current.X), float64(rcd.Current.Y))
+		iga, igb := gridMap.Pos2IndHexa(float64(rcd.Destination.X), float64(rcd.Destination.Y))
+
+		routei, err := gridMap.PlanHexa(isa, isb, iga, igb, robotVelocity, robotRotVelocity, timeStep)
+		if err != nil {
+			log.Print(err)
+		} else {
+			route := gridMap.Route2PosHexa(float64(rcd.Ts.Seconds), timeStep, routei)
+			if *vizroute {
+				vOpt := vizOpt{id: int(rcd.RobotId), route: route}
+				vizCh <- vOpt
+			}
+			jsonPayload, err = msg.MakePathMsg(route)
+			if err != nil {
+				log.Print(err)
+			}
+		}
+
+	} else if mode == ASTAR3D {
 		if gridMap == nil {
 			log.Print("not receive gridMap yet ...")
 			return
@@ -145,13 +174,36 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 	}
 }
 
+func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
+	rcd := &cav.DestinationRequest{}
+	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
+	if err != nil {
+		log.Print(err)
+	}
+	log.Printf("receive dest request robot%d", rcd.RobotId)
+	go routing(rcd)
+
+}
+
 func vizualizeHandler() {
+	counter := make(map[int]int)
 	for {
 		opt := <-vizCh
-		plot2d.AddPointGroup(fmt.Sprintf("route%d", opt.id), "points", grid.Convert32DPoint(opt.route))
-		plot2d.SavePlot(fmt.Sprintf("route/robot%d_route2D.png", opt.id))
-		plot3d.AddPointGroup(fmt.Sprintf("route%d", opt.id), "points", grid.Convert3DPoint(opt.route))
-		plot3d.SavePlot(fmt.Sprintf("route/robot%d_route3D.png", opt.id))
+		if val, ok := counter[opt.id]; ok {
+			counter[opt.id] = val + 1
+		} else {
+			counter[opt.id] = 1
+		}
+		plot2d.AddPointGroup(fmt.Sprintf("route%d_%d", opt.id, counter[opt.id]), "points", grid.Convert32DPoint(opt.route))
+		plot3d.AddPointGroup(fmt.Sprintf("route%d_%d", opt.id, counter[opt.id]), "points", grid.Convert3DPoint(opt.route))
+
+		// if counter[opt.id] >= 2 {
+		// 	plot2d.RemovePointGroup(fmt.Sprintf("route%d_%d", opt.id, counter[opt.id]-1))
+		// 	plot3d.RemovePointGroup(fmt.Sprintf("route%d_%d", opt.id, counter[opt.id]-1))
+		// }
+
+		plot2d.SavePlot(fmt.Sprintf("route/robot%d_%d_route2D.png", opt.id, counter[opt.id]))
+		plot3d.SavePlot(fmt.Sprintf("route/robot%d_%d_route3D.png", opt.id, counter[opt.id]))
 	}
 }
 
@@ -273,11 +325,29 @@ func SetupStaticMap() {
 		gridMap = grid.NewGridMapResoHexa(*mapMeta, maxT, robotRadius, reso, objMap)
 		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2PointHexa())
 		plot2d.SavePlot("map/static_obj_map_hexa.png")
-		plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3PointHexa())
+		// plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3PointHexa())
+	}
+}
+
+func testPath() {
+	isx, isy := gridMap.Pos2Ind(0, 0)
+	igx, igy := gridMap.Pos2Ind(30, 5)
+
+	routei, err := gridMap.Plan(isx, isy, igx, igy)
+	if err != nil {
+		log.Print(err)
+	} else {
+		route := gridMap.Route2Pos(0, routei)
+		plot2d.AddPointGroup("route", "points", grid.Convert32DPoint(route))
+		plot2d.SavePlot("route/test_route2D.png")
+		plot3d.AddPointGroup("route", "points", grid.Convert3DPoint(route))
+		//plot3d.SetZrange(0, routei[len(routei)-1][0])
+		plot3d.SavePlot("route/test_route3D.png")
 	}
 }
 
 func main() {
+	log.Printf("start geo-routing server mode = %s", mode.String())
 	go sxutil.HandleSigInt()
 	wg := sync.WaitGroup{}
 	flag.Parse()
@@ -300,20 +370,7 @@ func main() {
 	// load static map data
 	SetupStaticMap()
 
-	// isx, isy := gridMap.Pos2Ind(0, 0)
-	// igx, igy := gridMap.Pos2Ind(30, 5)
-
-	// routei, err := gridMap.Plan(isx, isy, igx, igy)
-	// if err != nil {
-	// 	log.Print(err)
-	// } else {
-	// 	route := gridMap.Route2Pos(0, routei)
-	// 	plot2d.AddPointGroup("route", "points", grid.Convert32DPoint(route))
-	// 	plot2d.SavePlot("route/test_route2D.png")
-	// 	plot3d.AddPointGroup("route", "points", grid.Convert3DPoint(route))
-	// 	//plot3d.SetZrange(0, routei[len(routei)-1][0])
-	// 	plot3d.SavePlot("route/test_route3D.png")
-	// }
+	// testPath()
 
 	//start main function
 	log.Print("start subscribing")

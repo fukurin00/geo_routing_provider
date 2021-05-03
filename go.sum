@@ -25,6 +25,8 @@ github.com/envoyproxy/go-control-plane v0.9.9-0.20210217033140-668b12f5399d/go.m
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
 github.com/fukurin00/astar_golang v0.0.0-20210501051420-262ebc7540ab h1:x2u3p3aonTd8cnKzy2Gx4cWBfeRWvUOTVAE/47ifMew=
 github.com/fukurin00/astar_golang v0.0.0-20210501051420-262ebc7540ab/go.mod h1:EwR1gYZDw54VkaUE6opFvaD+EhPds5sA3ctzBrHbyU0=
+github.com/fukurin00/glot v0.0.0-20210503075557-4ec67d73bcd1 h1:tO9YR8jqJUix1MGNSer2ID08GmFNtHmU4pd1UMTigWw=
+github.com/fukurin00/glot v0.0.0-20210503075557-4ec67d73bcd1/go.mod h1:RgUhckOKdPDR78CWs5I2giQXElPRJ3UVsC1og+8iuys=
 github.com/fukurin00/go_ros_msg v0.0.2 h1:u8WmhqxTlYF8yi9DqyrWHVtaoolLVrTKA1V7ThCQ+L8=
 github.com/fukurin00/go_ros_msg v0.0.2/go.mod h1:o6FQjN0ayu5fuSOeG0ZbnqkOk4/H01WN7Ks5Fx1rInc=
 github.com/fukurin00/provider_api v1.0.0 h1:LrOX8OSPu5BRSDYqM7jegEY/VLIjGpNG+OccmGwTrN8=

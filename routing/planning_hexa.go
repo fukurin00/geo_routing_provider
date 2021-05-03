@@ -101,7 +101,7 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 	gy := int(getYAB(float64(ga), float64(gb)))
 
 	//timeStep := m.Resolution/v + 2*math.Pi/3/w // L/v + 2pi/3w  120度回転したときの一番かかる時間
-	log.Printf("starat planning (%f, %f) to (%f, %f)",
+	log.Printf("start planning (%f, %f) to (%f, %f)",
 		m.MapOrigin.X+float64(sx)*m.Resolution,
 		m.MapOrigin.Y+float64(sy)*m.Resolution,
 		m.MapOrigin.X+float64(gx)*m.Resolution,
@@ -145,7 +145,7 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 		minTime = 99999999999999999
 		var minKey IndexT
 		for key, val := range openSet {
-			calCost := val.Cost + heuristic(goal, val)/v // length to goal / vel
+			calCost := val.Cost + heuristicHexa(goal, val)/v // length to goal / vel
 			if calCost < minCost {
 				minCost = calCost
 				minKey = key
@@ -196,6 +196,21 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 			}
 		}
 	}
+}
+
+func (g GridMap) Route2PosHexa(minT float64, timeStep float64, route [][3]int) [][3]float64 {
+	l := len(route)
+	fRoute := make([][3]float64, l)
+
+	for i, r := range route {
+		a, b := g.Ind2Pos(r[1], r[2])
+		x := getXAB(a, b)
+		y := getYAB(a, b)
+		t := minT + float64(r[0])*timeStep
+		p := [3]float64{t, x, y}
+		fRoute[i] = p
+	}
+	return fRoute
 }
 
 func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64) []*Node {
@@ -273,4 +288,14 @@ func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64) []*Nod
 		around = append(around, node)
 	}
 	return around
+}
+
+func heuristicHexa(n1, n2 *Node) float64 {
+	w := 1.0
+	x1 := getXAB(float64(n1.XId), float64(n1.YId))
+	y1 := getYAB(float64(n1.XId), float64(n1.YId))
+	x2 := getXAB(float64(n2.XId), float64(n2.YId))
+	y2 := getYAB(float64(n2.XId), float64(n2.YId))
+	d := w * math.Hypot(x1-x2, y1-y2)
+	return d
 }
