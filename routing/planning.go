@@ -160,11 +160,11 @@ func (g GridMap) Route2Pos(minT float64, route [][3]int) [][3]float64 {
 }
 
 type Node struct {
-	T   int //time
-	XId int
-	YId int
+	T   int `json:"t"` //time
+	XId int `json:"x"`
+	YId int `json:"y"`
 
-	Cost      float64
+	Cost      float64 `json:"cost"`
 	StopCount int
 
 	Parent *Node

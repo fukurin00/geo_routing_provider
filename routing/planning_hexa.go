@@ -1,7 +1,10 @@
 package routing
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"time"
@@ -93,8 +96,16 @@ func (g GridMap) Pos2IndHexa(x, y float64) (int, int) {
 	return xid, yid
 }
 
+type logOpt struct {
+	X    int
+	Y    int
+	T    int
+	Cost float64
+}
+
 func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][3]int, oerr error) {
 	startTime := time.Now()
+
 	sx := int(getXAB(float64(sa), float64(sb)))
 	sy := int(getYAB(float64(sa), float64(sb)))
 	gx := int(getXAB(float64(ga), float64(gb)))
@@ -137,7 +148,21 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 			elaps := time.Since(startTime).Seconds()
 			log.Print(current.T, current.XId, current.YId, count, elaps)
 			oerr = errors.New("path planning error: open set is empty")
+			bytes, _ := json.Marshal(current)
+			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route_%s.log", time.Now().Format("01-02-15-5")), bytes, 0666)
 			return nil, oerr
+		}
+
+		// 10秒以上で諦める
+		if time.Since(startTime).Seconds() > 10 {
+			log.Printf("path planning time out. count %d current is (%d, %d, %d)", count, current.T, current.XId, current.YId)
+			bytes, jerr := json.MarshalIndent(current, "", " ")
+			if jerr != nil {
+				log.Print(jerr)
+			}
+			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route_%s.log", time.Now().Format("01-02-15-5")), bytes, 0666)
+			oerr = errors.New("path planning timeouted")
+			return m.finalPath(goal, closeSetT), oerr
 		}
 
 		// get minimum cost node in open set
@@ -159,6 +184,11 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 		// find Goal
 		if current.XId == ga && current.YId == gb {
 			log.Print("find goal")
+			bytes, jerr := json.MarshalIndent(current, "", " ")
+			if jerr != nil {
+				log.Print(jerr)
+			}
+			ioutil.WriteFile(fmt.Sprintf("log/route/route_%s.log", time.Now().Format("01-02-15-5")), bytes, 0666)
 			goal.Parent = current.Parent
 			goal.Cost = current.Cost
 			goal.T = current.T
@@ -225,7 +255,7 @@ func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64) []*Nod
 	cost1 := g.Resolution / v
 	// [time, x, y, cost]
 	motion := [7][4]float64{
-		{1.0, 0.0, 0.0, timeStep}, //stay 要修正
+		{1.0, 0.0, 0.0, timeStep + cost1},
 		{0.0, 1.0, 0.0, cost1},
 		{0.0, 0.0, 1.0, cost1},
 		{0.0, -1.0, 1.0, cost1},
@@ -262,7 +292,7 @@ func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64) []*Nod
 			continue
 		}
 
-		var newCost float64
+		var newCost = n.Cost + m[3]
 		// stay してないとき
 		if diffA != 0 && diffB != 0 && i != 0 {
 			// 前のグリッドからそのまま直進できるならコスト少なめ
