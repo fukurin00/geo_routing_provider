@@ -247,12 +247,12 @@ func (g GridMap) Route2PosHexa(minT float64, timeStep float64, route [][3]int) [
 
 func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64) []*Node {
 
-	var diffA int
-	var diffB int
-	if n.Parent != nil {
-		diffA = n.XId - n.Parent.XId
-		diffB = n.YId - n.Parent.YId
-	}
+	// var diffA int
+	// var diffB int
+	// if n.Parent != nil {
+	// 	diffA = n.XId - n.Parent.XId
+	// 	diffB = n.YId - n.Parent.YId
+	// }
 
 	cost1 := g.Resolution / v
 	// [time, x, y, cost]
@@ -296,16 +296,16 @@ func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64) []*Nod
 
 		var newCost = n.Cost + m[3]
 		// stay してないとき
-		if diffA != 0 && diffB != 0 && i != 0 {
-			// 前のグリッドからそのまま直進できるならコスト少なめ
-			if m[1] == float64(diffA) && m[2] == float64(diffB) {
-				newCost = n.Cost + m[3]
+		// if diffA != 0 && diffB != 0 && i != 0 {
+		// 	// 前のグリッドからそのまま直進できるならコスト少なめ
+		// 	if m[1] == float64(diffA) && m[2] == float64(diffB) {
+		// 		newCost = n.Cost + m[3]
 
-			} else {
-				// 回転が必要なら回転分のコストを加える
-				newCost = n.Cost + m[3] + math.Pi/w/3
-			}
-		}
+		// 	} else {
+		// 		// 回転が必要なら回転分のコストを加える
+		// 		newCost = n.Cost + m[3] + math.Pi/w/3
+		// 	}
+		// }
 
 		node := n.NewNode(aT, aX, aY, newCost)
 

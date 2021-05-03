@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"os"
 	"sync"
 	"time"
@@ -72,7 +71,8 @@ func init() {
 	vizCh = make(chan vizOpt)
 
 	reso := *resolution
-	timeStep = reso/robotVelocity + 2*math.Pi/3/robotRotVelocity // L/v + 2pi/3w  120度回転したときの一番かかる時間
+	//timeStep = reso/robotVelocity + 2*math.Pi/3/robotRotVelocity // L/v + 2pi/3w  120度回転したときの一番かかる時間
+	timeStep = reso / robotVelocity
 }
 
 type vizOpt struct {
