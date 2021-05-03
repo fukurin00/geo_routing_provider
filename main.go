@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	resolution  float64 = 0.4
+	// resolution  float64 = 0.4
 	robotRadius float64 = 0.35
 	closeThresh float64 = 0.85
 
@@ -39,6 +39,7 @@ const (
 var (
 	mode Mode = ASTAR3D
 
+	resolution      = flag.Float64("reso", 0.5, "path planning resolution")
 	vizroute        = flag.Bool("visualize", true, "whether visualize route")
 	mqttsrv         = flag.String("mqtt", "localhost", "MQTT Broker address")
 	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "node serv address")
@@ -254,14 +255,15 @@ func SetupStaticMap() {
 		log.Print("read map file errore: ", err)
 	}
 	objMap := mapMeta.GetObjectMap()
+	reso := *resolution
 	if mode == ASTAR2D {
 		plot2d.AddPointGroup("map", "dots", grid.Convert2DPoint(objMap))
 		plot2d.SavePlot("map/raw_static_map.png")
-		astarPlanner = astar.NewAstar(objMap, robotRadius, resolution)
+		astarPlanner = astar.NewAstar(objMap, robotRadius, reso)
 		log.Print("load astar obj map")
 	} else if mode == ASTAR3D {
 		maxT := grid.MaxTimeLength
-		gridMap = grid.NewGridMapReso(*mapMeta, maxT, robotRadius, resolution, objMap)
+		gridMap = grid.NewGridMapReso(*mapMeta, maxT, robotRadius, reso, objMap)
 		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2Point())
 		plot2d.SavePlot("map/static_obj_map.png")
 		plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3Point())
