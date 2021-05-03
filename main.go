@@ -261,7 +261,7 @@ func main() {
 
 	//logging configuration
 	now := time.Now()
-	LoggingSettings("log/" + now.Format("2006-01-02-15-4") + ".log")
+	LoggingSettings("log/" + now.Format("2006-01-02-15") + ".log")
 
 	// connect to mqtt broker
 	listenMQTTBroker()
