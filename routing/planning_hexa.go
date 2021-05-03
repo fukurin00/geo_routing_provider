@@ -105,6 +105,7 @@ type logOpt struct {
 
 func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][3]int, oerr error) {
 	startTime := time.Now()
+	var logData []logOpt
 
 	sx := int(getXAB(float64(sa), float64(sb)))
 	sy := int(getYAB(float64(sa), float64(sb)))
@@ -148,19 +149,19 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 			elaps := time.Since(startTime).Seconds()
 			log.Print(current.T, current.XId, current.YId, count, elaps)
 			oerr = errors.New("path planning error: open set is empty")
-			bytes, _ := json.Marshal(current)
-			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route_%s.log", time.Now().Format("01-02-15-5")), bytes, 0666)
+			bytes, _ := json.Marshal(logData)
+			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route_%s.log", time.Now().Format("01-02-15-4")), bytes, 0666)
 			return nil, oerr
 		}
 
 		// 10秒以上で諦める
 		if time.Since(startTime).Seconds() > 10 {
 			log.Printf("path planning time out. count %d current is (%d, %d, %d)", count, current.T, current.XId, current.YId)
-			bytes, jerr := json.MarshalIndent(current, "", " ")
+			bytes, jerr := json.MarshalIndent(logData, "", " ")
 			if jerr != nil {
 				log.Print(jerr)
 			}
-			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route_%s.log", time.Now().Format("01-02-15-5")), bytes, 0666)
+			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route_%s.log", time.Now().Format("01-02-15-4")), bytes, 0666)
 			oerr = errors.New("path planning timeouted")
 			return m.finalPath(goal, closeSetT), oerr
 		}
@@ -180,15 +181,16 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 			}
 		}
 		current = openSet[minKey]
+		logData = append(logData, logOpt{current.XId, current.YId, current.T, current.Cost})
 
 		// find Goal
 		if current.XId == ga && current.YId == gb {
 			log.Print("find goal")
-			bytes, jerr := json.MarshalIndent(current, "", " ")
+			bytes, jerr := json.MarshalIndent(logData, "", " ")
 			if jerr != nil {
 				log.Print(jerr)
 			}
-			ioutil.WriteFile(fmt.Sprintf("log/route/route_%s.log", time.Now().Format("01-02-15-5")), bytes, 0666)
+			ioutil.WriteFile(fmt.Sprintf("log/route/route_%s.log", time.Now().Format("01-02-15-4")), bytes, 0666)
 			goal.Parent = current.Parent
 			goal.Cost = current.Cost
 			goal.T = current.T

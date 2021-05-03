@@ -29,20 +29,19 @@ import (
 )
 
 const (
-	// resolution  float64 = 0.4
-	robotRadius      float64 = 0.35
+	robotRadius      float64 = 0.30
 	closeThresh      float64 = 0.85
 	robotVelocity    float64 = 1.0 // [m/sec]
 	robotRotVelocity float64 = 1.0 // [rad/sec]
 
-	mapFile  string = "map/willow_garage_v_edited.pgm"
-	yamlFile string = "map/willow_garage_v_edited.yaml"
+	mapFile  string = "map/willow_garage_v_edited2.pgm"
+	yamlFile string = "map/willow_garage_v_edited2.yaml"
 )
 
 var (
 	mode Mode = ASTAR3DHEXA
 
-	resolution      = flag.Float64("reso", 0.5, "path planning resolution")
+	resolution      = flag.Float64("reso", 0.4, "path planning resolution")
 	vizroute        = flag.Bool("visualize", true, "whether visualize route")
 	mqttsrv         = flag.String("mqtt", "localhost", "MQTT Broker address")
 	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "node serv address")
@@ -117,6 +116,7 @@ func routing(rcd *cav.DestinationRequest) {
 			if err != nil {
 				log.Print(err)
 			}
+			sendPath(jsonPayload, int(rcd.RobotId))
 		}
 
 	} else if mode == ASTAR3D {
@@ -140,6 +140,7 @@ func routing(rcd *cav.DestinationRequest) {
 			if err != nil {
 				log.Print(err)
 			}
+			sendPath(jsonPayload, int(rcd.RobotId))
 		}
 	} else if mode == ASTAR2D {
 		route, err := astarPlanner.Plan(float64(rcd.Current.X), float64(rcd.Current.Y), float64(rcd.Destination.X), float64(rcd.Destination.Y))
@@ -150,9 +151,14 @@ func routing(rcd *cav.DestinationRequest) {
 			if err != nil {
 				log.Print(err)
 			}
+			sendPath(jsonPayload, int(rcd.RobotId))
 		}
 	}
-	topic := fmt.Sprintf("robot/path/%d", rcd.RobotId)
+
+}
+
+func sendPath(jsonPayload []byte, id int) {
+	topic := fmt.Sprintf("robot/path/%d", id)
 	mqttProt := sxmqtt.MQTTRecord{
 		Topic:  topic,
 		Record: jsonPayload,
@@ -170,7 +176,7 @@ func routing(rcd *cav.DestinationRequest) {
 	if err != nil {
 		log.Print(err)
 	} else {
-		log.Printf("send path robot %d", rcd.RobotId)
+		log.Printf("send path robot %d", id)
 	}
 }
 
