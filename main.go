@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	resolution  float64 = 0.3
+	resolution  float64 = 0.4
 	robotRadius float64 = 0.35
 	closeThresh float64 = 0.85
 
@@ -56,6 +56,7 @@ var (
 	routeClient *sxutil.SXServiceClient
 
 	msgCh chan mqtt.Message
+	vizCh chan vizOpt
 
 	plot2d *glot.Plot
 	plot3d *glot.Plot
@@ -63,6 +64,12 @@ var (
 
 func init() {
 	msgCh = make(chan mqtt.Message)
+	vizCh = make(chan vizOpt)
+}
+
+type vizOpt struct {
+	id    int
+	route [][3]float64
 }
 
 type Mode int
@@ -95,10 +102,8 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 		} else {
 			route := gridMap.Route2Pos(0, routei)
 			if *vizroute {
-				plot2d.AddPointGroup("route", "points", grid.Convert32DPoint(route))
-				plot2d.SavePlot("route/route2D.png")
-				plot3d.AddPointGroup("route", "points", grid.Convert3DPoint(route))
-				plot3d.SavePlot("route/route3D.png")
+				vOpt := vizOpt{id: int(rcd.RobotId), route: route}
+				vizCh <- vOpt
 			}
 			jsonPayload, err = msg.MakePathMsg(route)
 			if err != nil {
@@ -135,6 +140,16 @@ func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 		log.Print(err)
 	} else {
 		log.Printf("send path robot %d", rcd.RobotId)
+	}
+}
+
+func vizualizeHandler() {
+	for {
+		opt := <-vizCh
+		plot2d.AddPointGroup(fmt.Sprintf("route%d", opt.id), "points", grid.Convert32DPoint(opt.route))
+		plot2d.SavePlot(fmt.Sprintf("route/robot%d_route2D.png", opt.id))
+		plot3d.AddPointGroup(fmt.Sprintf("route%d", opt.id), "points", grid.Convert3DPoint(opt.route))
+		plot3d.SavePlot(fmt.Sprintf("route/robot%d_route3D.png", opt.id))
 	}
 }
 
@@ -276,25 +291,28 @@ func main() {
 	// load static map data
 	SetupStaticMap()
 
-	isx, isy := gridMap.Pos2Ind(0, 0)
-	igx, igy := gridMap.Pos2Ind(30, 5)
+	// isx, isy := gridMap.Pos2Ind(0, 0)
+	// igx, igy := gridMap.Pos2Ind(30, 5)
 
-	routei, err := gridMap.Plan(isx, isy, igx, igy)
-	if err != nil {
-		log.Print(err)
-	} else {
-		route := gridMap.Route2Pos(0, routei)
-		plot2d.AddPointGroup("route", "points", grid.Convert32DPoint(route))
-		plot2d.SavePlot("route/test_route2D.png")
-		plot3d.AddPointGroup("route", "points", grid.Convert3DPoint(route))
-		//plot3d.SetZrange(0, routei[len(routei)-1][0])
-		plot3d.SavePlot("route/test_route3D.png")
-	}
+	// routei, err := gridMap.Plan(isx, isy, igx, igy)
+	// if err != nil {
+	// 	log.Print(err)
+	// } else {
+	// 	route := gridMap.Route2Pos(0, routei)
+	// 	plot2d.AddPointGroup("route", "points", grid.Convert32DPoint(route))
+	// 	plot2d.SavePlot("route/test_route2D.png")
+	// 	plot3d.AddPointGroup("route", "points", grid.Convert3DPoint(route))
+	// 	//plot3d.SetZrange(0, routei[len(routei)-1][0])
+	// 	plot3d.SavePlot("route/test_route3D.png")
+	// }
 
 	//start main function
 	log.Print("start subscribing")
 	go handleMqttMessage()
 	go subsclibeRouteSupply(routeClient)
+	if *vizroute {
+		go vizualizeHandler()
+	}
 	wg.Add(1)
 	wg.Wait()
 }
