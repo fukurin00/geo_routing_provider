@@ -22,7 +22,7 @@ type Point struct {
 }
 
 // type CostMap map[Index]uint8
-type TimeObjMap []ObjMap
+type TimeRobotMap []ObjMap
 type ObjMap [][]bool
 
 type GridMap struct {
@@ -33,7 +33,7 @@ type GridMap struct {
 
 	CurrentMinTime float64
 
-	TW        TimeObjMap
+	TW        TimeRobotMap
 	MaxT      int
 	ObjectMap ObjMap //元からある障害物ならTrue
 }
@@ -67,7 +67,11 @@ func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 	for i := 0; i < m.H; i++ {
 		g.ObjectMap[i] = make([]bool, m.W)
 	}
-	g.TW = make(TimeObjMap, maxT)
+
+	g.TW = make(TimeRobotMap, maxT)
+	for i := 0; i < maxT; i++ {
+		g.TW[i] = g.ObjectMap
+	}
 
 	width := m.W
 
@@ -104,9 +108,6 @@ func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 	elaps := time.Since(start).Seconds()
 	log.Printf("load objmap using robot radius takes %f seconds", elaps)
 
-	for i := 0; i < maxT; i++ {
-		g.TW[i] = g.ObjectMap
-	}
 	return g
 }
 
@@ -138,6 +139,10 @@ func NewGridMapReso(m MapMeta, maxT int, robotRadius float64, resolution float64
 	for i := 0; i < g.Height; i++ {
 		g.ObjectMap[i] = make([]bool, g.Width)
 	}
+	g.TW = make(TimeRobotMap, maxT)
+	for i := 0; i < maxT; i++ {
+		g.TW[i] = g.ObjectMap
+	}
 
 	count := 0
 	for j := 0; j < g.Height; j++ {
@@ -156,10 +161,6 @@ func NewGridMapReso(m MapMeta, maxT int, robotRadius float64, resolution float64
 		}
 	}
 
-	g.TW = make(TimeObjMap, maxT)
-	for i := 0; i < maxT; i++ {
-		g.TW[i] = g.ObjectMap
-	}
 	elaps := time.Since(start).Seconds()
 	log.Printf("loading gridmap resolution: %f, takes: %f seconds, obj %d counts, width: %d, height: %d", resolution, elaps, count, g.Width, g.Height)
 	return g

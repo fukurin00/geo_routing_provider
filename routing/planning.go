@@ -167,7 +167,6 @@ type Node struct {
 	Cost float64
 
 	Parent *Node
-	// TW     TimeCostMap
 }
 
 func (s *Node) NewNode(t, x, y int, cost float64) *Node {
