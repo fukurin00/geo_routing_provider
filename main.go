@@ -37,7 +37,7 @@ const (
 )
 
 var (
-	mode Mode = ASTAR3D
+	mode Mode = ASTAR3DHEXA
 
 	resolution      = flag.Float64("reso", 0.5, "path planning resolution")
 	vizroute        = flag.Bool("visualize", true, "whether visualize route")
@@ -76,8 +76,9 @@ type vizOpt struct {
 type Mode int
 
 const (
-	ASTAR2D Mode = iota //normal astar
-	ASTAR3D             //original astar
+	ASTAR2D     Mode = iota //normal astar
+	ASTAR3D                 //original astar
+	ASTAR3DHEXA             //original hexa astar
 )
 
 func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
@@ -267,6 +268,12 @@ func SetupStaticMap() {
 		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2Point())
 		plot2d.SavePlot("map/static_obj_map.png")
 		plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3Point())
+	} else if mode == ASTAR3DHEXA {
+		maxT := grid.MaxTimeLength
+		gridMap = grid.NewGridMapResoHexa(*mapMeta, maxT, robotRadius, reso, objMap)
+		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2PointHexa())
+		plot2d.SavePlot("map/static_obj_map_hexa.png")
+		plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3PointHexa())
 	}
 }
 

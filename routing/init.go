@@ -30,6 +30,7 @@ type GridMap struct {
 	Origin     Point
 	Width      int
 	Height     int
+	MapOrigin  Point
 
 	CurrentMinTime float64
 
