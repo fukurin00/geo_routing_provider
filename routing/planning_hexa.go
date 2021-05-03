@@ -101,9 +101,10 @@ type logOpt struct {
 	Y    int
 	T    int
 	Cost float64
+	StopCount int
 }
 
-func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][3]int, oerr error) {
+func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TW TimeRobotMap) (route [][3]int, oerr error) {
 	startTime := time.Now()
 	var logData []logOpt
 
@@ -113,7 +114,8 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 	gy := int(getYAB(float64(ga), float64(gb)))
 
 	//timeStep := m.Resolution/v + 2*math.Pi/3/w // L/v + 2pi/3w  120度回転したときの一番かかる時間
-	log.Printf("start planning (%f, %f) to (%f, %f)",
+	log.Printf("start planning robot%d (%f, %f) to (%f, %f)",
+		id,
 		m.MapOrigin.X+float64(sx)*m.Resolution,
 		m.MapOrigin.Y+float64(sy)*m.Resolution,
 		m.MapOrigin.X+float64(gx)*m.Resolution,
@@ -121,11 +123,11 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 	)
 
 	if m.ObjectMap[gb][ga] {
-		oerr = errors.New("path planning error: goal is not verified")
+		oerr = fmt.Errorf("robot%d path planning error: goal is not verified", id)
 		return nil, oerr
 	}
 	if m.ObjectMap[sb][sa] {
-		oerr = errors.New("path planning error: start point is not verified")
+		oerr = fmt.Errorf("robot%d path planning error: start point is not verified", id)
 		return nil, oerr
 	}
 	start := &Node{T: 0, XId: sa, YId: sb, Cost: 0, Parent: nil}
@@ -150,7 +152,7 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 			log.Print(current.T, current.XId, current.YId, count, elaps)
 			oerr = errors.New("path planning error: open set is empty")
 			bytes, _ := json.Marshal(logData)
-			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route_%s.log", time.Now().Format("01-02-15-4")), bytes, 0666)
+			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route%d_%s.log", id, time.Now().Format("01-02-15-4")), bytes, 0666)
 			return nil, oerr
 		}
 
@@ -161,7 +163,7 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 			if jerr != nil {
 				log.Print(jerr)
 			}
-			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route_%s.log", time.Now().Format("01-02-15-4")), bytes, 0666)
+			ioutil.WriteFile(fmt.Sprintf("log/route/fail_route%d_%s.log", id, time.Now().Format("01-02-15-4")), bytes, 0666)
 			oerr = errors.New("path planning timeouted")
 			return m.finalPath(goal, closeSetT), oerr
 		}
@@ -181,7 +183,7 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 			}
 		}
 		current = openSet[minKey]
-		logData = append(logData, logOpt{current.XId, current.YId, current.T, current.Cost})
+		logData = append(logData, logOpt{current.XId, current.YId, current.T, current.Cost, current.StopCount})
 
 		// find Goal
 		if current.XId == ga && current.YId == gb {
@@ -190,12 +192,13 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 			if jerr != nil {
 				log.Print(jerr)
 			}
-			ioutil.WriteFile(fmt.Sprintf("log/route/route_%s.log", time.Now().Format("01-02-15-4")), bytes, 0666)
+			ioutil.WriteFile(fmt.Sprintf("log/route/route%d_%s.log", id, time.Now().Format("01-02-15-4")), bytes, 0666)
 			goal.Parent = current.Parent
 			goal.Cost = current.Cost
 			goal.T = current.T
 			elaps := time.Since(startTime).Seconds()
-			log.Printf("planning (%f, %f) to (%f, %f) takes %f seconds, count is %d",
+			log.Printf("robot%d planning (%f, %f) to (%f, %f) takes %f seconds, count is %d",
+				id,
 				m.MapOrigin.X+float64(sx)*m.Resolution,
 				m.MapOrigin.Y+float64(sy)*m.Resolution,
 				m.MapOrigin.X+float64(gx)*m.Resolution,
@@ -210,7 +213,7 @@ func (m GridMap) PlanHexa(sa, sb, ga, gb int, v, w, timeStep float64) (route [][
 		closeSet[nodeIndex(current)] = current
 		closeSetT[nodeIndexT(current)] = current
 
-		around := current.AroundHexa(&m, minTime, v, w, timeStep)
+		around := current.AroundHexa(&m, minTime, v, w, timeStep, TW)
 		for _, an := range around {
 			indT := nodeIndexT(an)
 			ind := nodeIndex(an)
@@ -245,7 +248,7 @@ func (g GridMap) Route2PosHexa(minT float64, timeStep float64, route [][3]int) [
 	return fRoute
 }
 
-func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64) []*Node {
+func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64, TW TimeRobotMap) []*Node {
 
 	// var diffA int
 	// var diffB int
@@ -290,7 +293,7 @@ func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64) []*Nod
 		}
 
 		//ロボットがいて通れないところは外す
-		if g.TW[aT][aY][aX] {
+		if TW[aT][aY][aX] {
 			continue
 		}
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -46,10 +47,11 @@ var (
 	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "node serv address")
 	sxServerAddress string
 
-	mapMetaUpdate               = false
-	mapMeta       *grid.MapMeta = nil
-	gridMap       *grid.GridMap = nil
-	astarPlanner  *astar.Astar  //if 2d mode
+	mapMetaUpdate                   = false
+	mapMeta       *grid.MapMeta     = nil
+	gridMap       *grid.GridMap     = nil
+	astarPlanner  *astar.Astar      //if 2d mode
+	timeCostMap   grid.TimeRobotMap = nil
 
 	mu sync.Mutex
 
@@ -57,22 +59,26 @@ var (
 	mqttClient  *sxutil.SXServiceClient
 	routeClient *sxutil.SXServiceClient
 
-	msgCh chan mqtt.Message
-	vizCh chan vizOpt
+	msgCh    chan mqtt.Message
+	vizCh    chan vizOpt
+	pathUpCh chan [][3]int
 
 	plot2d *glot.Plot
 	plot3d *glot.Plot
 
-	timeStep float64 //計算に使う1stepの秒数
+	timeStep int //計算に使う1stepの秒数
+	reso     float64
 )
 
 func init() {
 	msgCh = make(chan mqtt.Message)
 	vizCh = make(chan vizOpt)
+	pathUpCh = make(chan [][3]int)
 
-	reso := *resolution
+	flag.Parse()
+	reso = *resolution
 	//timeStep = reso/robotVelocity + 2*math.Pi/3/robotRotVelocity // L/v + 2pi/3w  120度回転したときの一番かかる時間
-	timeStep = reso / robotVelocity
+	timeStep = 3 * int(math.Ceil(reso / robotVelocity)) //切り上げ整数
 }
 
 type vizOpt struct {
@@ -103,11 +109,12 @@ func routing(rcd *cav.DestinationRequest) {
 		isa, isb := gridMap.Pos2IndHexa(float64(rcd.Current.X), float64(rcd.Current.Y))
 		iga, igb := gridMap.Pos2IndHexa(float64(rcd.Destination.X), float64(rcd.Destination.Y))
 
-		routei, err := gridMap.PlanHexa(isa, isb, iga, igb, robotVelocity, robotRotVelocity, timeStep)
+		routei, err := gridMap.PlanHexa(int(rcd.RobotId), isa, isb, iga, igb, robotVelocity, robotRotVelocity, float64(timeStep), append(timeCostMap[:0:0], timeCostMap...))
 		if err != nil {
 			log.Print(err)
 		} else {
-			route := gridMap.Route2PosHexa(float64(rcd.Ts.Seconds), timeStep, routei)
+			pathUpCh <- routei
+			route := gridMap.Route2PosHexa(float64(rcd.Ts.Seconds), float64(timeStep), routei)
 			if *vizroute {
 				vOpt := vizOpt{id: int(rcd.RobotId), route: route}
 				vizCh <- vOpt
@@ -329,6 +336,7 @@ func SetupStaticMap() {
 	} else if mode == ASTAR3DHEXA {
 		maxT := grid.MaxTimeLength
 		gridMap = grid.NewGridMapResoHexa(*mapMeta, maxT, robotRadius, reso, objMap)
+		timeCostMap = append(gridMap.TW[:0:0], gridMap.TW...) // copy slice
 		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2PointHexa())
 		plot2d.SavePlot("map/static_obj_map_hexa.png")
 		// plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3PointHexa())
@@ -352,11 +360,24 @@ func testPath() {
 	}
 }
 
+func updateTimeObjMapHandler() {
+	log.Printf("start updating costmap timestep is %d", timeStep)
+	timer := time.NewTicker(time.Duration(timeStep))
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+			gridMap.Update(timeCostMap)
+		case route := <-pathUpCh:
+			gridMap.UpdateTimeObjMapHexa(timeCostMap, route, robotRadius)
+		}
+	}
+}
+
 func main() {
-	log.Printf("start geo-routing server mode = %s", mode.String())
+	log.Printf("start geo-routing server mode:%s, timestep:%d, resolution:%f", mode.String(), timeStep, reso)
 	go sxutil.HandleSigInt()
 	wg := sync.WaitGroup{}
-	flag.Parse()
 	sxutil.RegisterDeferFunction(sxutil.UnRegisterNode)
 
 	//logging configuration
@@ -382,6 +403,7 @@ func main() {
 	log.Print("start subscribing")
 	go handleMqttMessage()
 	go subsclibeRouteSupply(routeClient)
+	go updateTimeObjMapHandler()
 	if *vizroute {
 		go vizualizeHandler()
 	}
