@@ -1,11 +1,13 @@
 package routing
 
-// func (g GridMap) Update(TW TimeRobotMap) {
-// 	for i := 0; i < g.MaxT-1; i++ {
-// 		TW[i+1] = TW[i]
-// 	}
-// 	TW[0] = g.ObjectMap
-// }
+func (g GridMap) UpdateStep(TW TimeRobotMap, step int) {
+	newTRW := make(map[IndexT]bool)
+	for key, val := range TW {
+		if key.T < MaxTimeLength-step-1 {
+			newTRW[newIndexT(key.T+step, key.X, key.Y)] = val
+		}
+	}
+}
 
 // func (g GridMap) UpdateTimeObjMapHexa(TW TimeRobotMap, route [][3]int, robotRadius float64) {
 // 	around := [6][2]int{{-1, 0}, {0, -1}, {1, -1}, {1, 0}, {0, 1}, {-1, 1}}
@@ -84,3 +86,12 @@ package routing
 
 // 	}
 // }
+
+func TRWCopy(current TimeRobotMap) TimeRobotMap {
+	trw := make(map[IndexT]bool)
+
+	for key, val := range current {
+		trw[key] = val
+	}
+	return trw
+}
