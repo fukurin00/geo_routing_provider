@@ -379,19 +379,19 @@ func testPath() {
 	}
 }
 
-func updateTimeObjMapHandler() {
-	log.Printf("start updating costmap timestep is %d", timeStep)
-	timer := time.NewTicker(time.Duration(timeStep))
-	defer timer.Stop()
-	for {
-		select {
-		case <-timer.C:
-			gridMap.Update(timeRobotMap)
-		case route := <-pathUpCh:
-			gridMap.UpdateTimeObjMapHexa(timeRobotMap, route, robotRadius)
-		}
-	}
-}
+// func updateTimeObjMapHandler() {
+// 	log.Printf("start updating costmap timestep is %d", timeStep)
+// 	timer := time.NewTicker(time.Duration(timeStep))
+// 	defer timer.Stop()
+// 	for {
+// 		select {
+// 		case <-timer.C:
+// 			gridMap.Update(timeRobotMap)
+// 		case route := <-pathUpCh:
+// 			gridMap.UpdateTimeObjMapHexa(timeRobotMap, route, robotRadius)
+// 		}
+// 	}
+// }
 
 func main() {
 	log.Printf("start geo-routing server mode:%s, timestep:%d, resolution:%f", mode.String(), timeStep, reso)

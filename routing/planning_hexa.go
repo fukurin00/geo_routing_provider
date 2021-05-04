@@ -35,10 +35,7 @@ func NewGridMapResoHexa(m MapMeta, robotRadius float64, resolution float64, objM
 	g.Height = int(math.Round((maxY - g.Origin.Y) / resolution))
 
 	g.MaxT = MaxTimeLength
-	g.ObjectMap = make([][]bool, g.Height)
-	for i := 0; i < g.Height; i++ {
-		g.ObjectMap[i] = make([]bool, g.Width)
-	}
+	g.ObjectMap = make(map[Index]bool, g.Height)
 
 	count := 0
 	for j := 0; j < g.Height; j++ {
@@ -47,11 +44,11 @@ func NewGridMapResoHexa(m MapMeta, robotRadius float64, resolution float64, objM
 			a := g.Origin.X + float64(i)*g.Resolution
 			x := getXAB(a, b)
 			y := getYAB(a, b)
-			g.ObjectMap[j][i] = false
+			g.ObjectMap[newIndex(i, j)] = false
 			for _, op := range objMap {
 				d := math.Hypot(op[0]-x, op[1]-y)
 				if d <= robotRadius {
-					g.ObjectMap[j][i] = true
+					g.ObjectMap[newIndex(i, j)] = true
 					count += 1
 					break
 				}
@@ -118,11 +115,11 @@ func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TR
 		m.MapOrigin.Y+float64(gy)*m.Resolution,
 	)
 
-	if m.ObjectMap[gb][ga] {
+	if m.ObjectMap[newIndex(ga, gb)] {
 		oerr = fmt.Errorf("robot%d path planning error: goal is not verified", id)
 		return nil, oerr
 	}
-	if m.ObjectMap[sb][sa] {
+	if m.ObjectMap[newIndex(sa, sb)] {
 		oerr = fmt.Errorf("robot%d path planning error: start point is not verified", id)
 		return nil, oerr
 	}
@@ -258,7 +255,7 @@ func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64, TRW Ti
 	cost1 := g.Resolution / v
 	// [time, x, y, cost]
 	motion := [7][4]float64{
-		{1.0, 0.0, 0.0, timeStep + cost1},
+		{1.0, 0.0, 0.0, timeStep},
 		{0.0, 1.0, 0.0, cost1},
 		{0.0, 0.0, 1.0, cost1},
 		{0.0, -1.0, 1.0, cost1},
@@ -286,13 +283,15 @@ func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64, TRW Ti
 		}
 
 		//元から障害物で通れないところは外す
-		if g.ObjectMap[aY][aX] {
+		if g.ObjectMap[newIndex(aX, aY)] {
 			continue
 		}
 
 		//ロボットがいて通れないところは外す
-		if TRW[aT][aY][aX] {
-			continue
+		if val, ok := TRW[newIndexT(aT, aX, aY)]; ok {
+			if val {
+				continue
+			}
 		}
 
 		var newCost = n.Cost + m[3]

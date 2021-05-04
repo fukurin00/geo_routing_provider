@@ -22,8 +22,8 @@ type Point struct {
 }
 
 // type CostMap map[Index]uint8
-type TimeRobotMap []ObjMap
-type ObjMap [][]bool
+type TimeRobotMap map[IndexT]bool
+type ObjMap map[Index]bool
 
 type GridMap struct {
 	Resolution float64
@@ -67,20 +67,16 @@ func NewGridMap(m MapMeta, robotRadius float64) *GridMap {
 	g.MaxT = MaxTimeLength
 
 	// init objemac slice
-	g.ObjectMap = make([][]bool, m.H)
-	for i := 0; i < m.H; i++ {
-		g.ObjectMap[i] = make([]bool, m.W)
-	}
+	g.ObjectMap = make(map[Index]bool)
 
 	width := m.W
 
 	var objList [][2]float64
 	for i, d := range m.Data {
 		if d > int8(CloseThreth) {
-			g.ObjectMap[i/width][i%width] = true
-			objList = append(objList, [2]float64{m.Origin.X + float64(i%width)*m.Reso, m.Origin.Y + float64(i/width)*m.Reso})
+			g.ObjectMap[newIndex(i%width, i/width)] = true
 		} else {
-			g.ObjectMap[i/width][i%width] = false
+			g.ObjectMap[newIndex(i%width, i/width)] = false
 		}
 	}
 
@@ -98,7 +94,7 @@ func NewGridMap(m MapMeta, robotRadius float64) *GridMap {
 			for _, op := range objList {
 				d := math.Hypot(x-op[0], y-op[1])
 				if d <= robotRadius {
-					g.ObjectMap[j][i] = true
+					g.ObjectMap[newIndex(i, j)] = true
 					break
 				}
 			}
@@ -135,22 +131,18 @@ func NewGridMapReso(m MapMeta, robotRadius float64, resolution float64, objMap [
 	g.Height = int(math.Round((maxY - g.Origin.Y) / resolution))
 
 	g.MaxT = MaxTimeLength
-	g.ObjectMap = make([][]bool, g.Height)
-	for i := 0; i < g.Height; i++ {
-		g.ObjectMap[i] = make([]bool, g.Width)
-	}
-
+	g.ObjectMap = make(map[Index]bool, g.Height)
 	count := 0
 	for j := 0; j < g.Height; j++ {
 		y := g.Origin.Y + float64(j)*g.Resolution
 		for i := 0; i < g.Width; i++ {
 			x := g.Origin.X + float64(i)*g.Resolution
-			g.ObjectMap[j][i] = false
+			g.ObjectMap[newIndex(i, j)] = false
 			for _, op := range objMap {
 				d := math.Hypot(op[0]-x, op[1]-y)
 				// if distance < robot radius, robot cannot path
 				if d <= robotRadius {
-					g.ObjectMap[j][i] = true
+					g.ObjectMap[newIndex(i, j)] = true
 					count += 1
 					break
 				}
@@ -174,12 +166,6 @@ func MaxFloat(a []float64) float64 {
 }
 
 func NewTRW(t, w, h int) TimeRobotMap {
-	var tw TimeRobotMap = make([]ObjMap, t)
-	for i := 0; i < t; i++ {
-		tw[i] = make(ObjMap, h)
-		for j := 0; j < h; j++ {
-			tw[i][j] = make([]bool, w)
-		}
-	}
+	var tw TimeRobotMap = make(map[IndexT]bool)
 	return tw
 }

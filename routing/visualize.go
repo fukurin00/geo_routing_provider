@@ -59,7 +59,7 @@ func (m GridMap) ConvertObjMap2Point() (obj2d [][]float64) {
 	var ys []float64
 	for j := 0; j < m.Height; j++ {
 		for i := 0; i < m.Width; i++ {
-			if m.ObjectMap[j][i] {
+			if m.ObjectMap[newIndex(i, j)] {
 				xs = append(xs, m.Origin.X+m.Resolution*float64(i))
 				ys = append(ys, m.Origin.Y+m.Resolution*float64(j))
 			}
@@ -76,7 +76,7 @@ func (m GridMap) ConvertObjMap3Point() (obj3d [][]float64) {
 	var ts []float64
 	for j := 0; j < m.Height; j++ {
 		for i := 0; i < m.Width; i++ {
-			if m.ObjectMap[j][i] {
+			if m.ObjectMap[newIndex(i, j)] {
 				xs = append(xs, m.Origin.X+m.Resolution*float64(i))
 				ys = append(ys, m.Origin.Y+m.Resolution*float64(j))
 				ts = append(ts, 0)
@@ -94,7 +94,7 @@ func (m GridMap) ConvertObjMap2PointHexa() (obj2d [][]float64) {
 	var ys []float64
 	for j := 0; j < m.Height; j++ {
 		for i := 0; i < m.Width; i++ {
-			if m.ObjectMap[j][i] {
+			if m.ObjectMap[newIndex(i, j)] {
 				a := m.Origin.X + m.Resolution*float64(i)
 				b := m.Origin.Y + m.Resolution*float64(j)
 				xs = append(xs, getXAB(a, b))
@@ -113,7 +113,7 @@ func (m GridMap) ConvertObjMap3PointHexa() (obj3d [][]float64) {
 	var ts []float64
 	for j := 0; j < m.Height; j++ {
 		for i := 0; i < m.Width; i++ {
-			if m.ObjectMap[j][i] {
+			if m.ObjectMap[newIndex(i, j)] {
 				a := m.Origin.X + m.Resolution*float64(i)
 				b := m.Origin.Y + m.Resolution*float64(j)
 				xs = append(xs, getXAB(a, b))

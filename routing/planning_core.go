@@ -13,6 +13,11 @@ type Index struct {
 	Y int
 }
 
+func newIndex(x, y int) Index {
+	n := Index{X: x, Y: y}
+	return n
+}
+
 func nodeIndex(n *Node) Index {
 	i := Index{
 		X: n.XId,
@@ -36,6 +41,11 @@ func nodeIndexT(n *Node) IndexT {
 	return i
 }
 
+func newIndexT(t, x, y int) IndexT {
+	n := IndexT{T: t, X: x, Y: y}
+	return n
+}
+
 func NewIndexT(t, x, y int) *IndexT {
 	n := new(IndexT)
 	n.T = t
@@ -47,11 +57,11 @@ func NewIndexT(t, x, y int) *IndexT {
 func (m GridMap) Plan(sx, sy, gx, gy int, TRW TimeRobotMap) (route [][3]int, oerr error) {
 	startTime := time.Now()
 
-	if m.ObjectMap[gy][gx] {
+	if m.ObjectMap[newIndex(gx, gy)] {
 		oerr = errors.New("path planning error: goal is not verified")
 		return nil, oerr
 	}
-	if m.ObjectMap[sy][sx] {
+	if m.ObjectMap[newIndex(sx, sy)] {
 		oerr = errors.New("path planning error: start point is not verified")
 		return nil, oerr
 	}
@@ -215,12 +225,12 @@ func (n *Node) Around(g *GridMap, minTime int, TRW TimeRobotMap) []*Node {
 		}
 
 		//元から障害物で通れないところは消す
-		if g.ObjectMap[aY][aX] {
+		if g.ObjectMap[newIndex(aX, aY)] {
 			continue
 		}
 
 		//ロボットがいて通れないコストマップは外す
-		if TRW[aT][aY][aX] {
+		if TRW[newIndexT(aT, aX, aY)] {
 			continue
 		}
 
