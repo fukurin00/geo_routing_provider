@@ -17,7 +17,6 @@ import (
 	"github.com/fukurin00/glot"
 
 	cav "github.com/synerex/proto_cav"
-	sxmqtt "github.com/synerex/proto_mqtt"
 	api "github.com/synerex/synerex_api"
 	sxutil "github.com/synerex/synerex_sxutil"
 	"google.golang.org/protobuf/proto"
@@ -25,6 +24,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	astar "github.com/fukurin00/astar_golang"
 	ros "github.com/fukurin00/go_ros_msg"
+	"github.com/synerex/proto_mqtt"
 	pbase "github.com/synerex/synerex_proto"
 )
 
@@ -52,6 +52,8 @@ var (
 	gridMap       *grid.GridMap     = nil
 	astarPlanner  *astar.Astar      //if 2d mode
 	timeCostMap   grid.TimeRobotMap = nil
+
+	clt mqtt.Client
 
 	mu sync.Mutex
 
@@ -113,7 +115,7 @@ func routing(rcd *cav.DestinationRequest) {
 		if err != nil {
 			log.Print(err)
 		} else {
-			pathUpCh <- routei
+			//pathUpCh <- routei
 			route := gridMap.Route2PosHexa(float64(rcd.Ts.Seconds), float64(timeStep), routei)
 			if *vizroute {
 				vOpt := vizOpt{id: int(rcd.RobotId), route: route}
@@ -166,7 +168,18 @@ func routing(rcd *cav.DestinationRequest) {
 
 func sendPath(jsonPayload []byte, id int) {
 	topic := fmt.Sprintf("robot/path/%d", id)
-	mqttProt := sxmqtt.MQTTRecord{
+	// t := clt.Publish(topic, 0, false, string(jsonPayload))
+	// t.Wait()
+	// go func() {
+	// 	_ = t.Done() // Can also use '<-t.Done()' in releases > 1.2.0
+	// 	if t.Error() != nil {
+	// 		log.Print(t.Error()) // Use your preferred logging technique (or just fmt.Printf)
+	// 	} else {
+
+	// 	}
+	// }()
+
+	mqttProt := proto_mqtt.MQTTRecord{
 		Topic:  topic,
 		Record: jsonPayload,
 	}
@@ -183,11 +196,12 @@ func sendPath(jsonPayload []byte, id int) {
 	if err != nil {
 		log.Print(err)
 	} else {
-		log.Printf("send path robot %d", id)
+		log.Printf("send path robot%d topic:%s", id, topic)
 	}
+
 }
 
-func routeCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
+func routeCallback(client *sxutil.SXServiceClient, sp *api.Supply) {
 	rcd := &cav.DestinationRequest{}
 	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
 	if err != nil {
@@ -273,23 +287,31 @@ func handleMqttMessage() {
 	}
 }
 
-// listening MQTT topics.
+// listening MQTT topics
 func listenMQTTBroker() {
-	var myHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-		msgCh <- msg
-	}
+	log.Print("setup mqtt client")
+	logFile := "log/mqtt/" + time.Now().Format("2006-01-02") + ".log"
+	logfile, _ := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	multiLogFile := io.MultiWriter(os.Stdout, logfile)
+	mqtt.ERROR = log.New(multiLogFile, "[ERROR] ", 0)
+	mqtt.CRITICAL = log.New(multiLogFile, "[CRIT] ", 0)
+	mqtt.WARN = log.New(multiLogFile, "[WARN]  ", 0)
+	//mqtt.DEBUG = log.New(os.Stdout, "[DEBUG] ", 0)
+	// var myHandler mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
+	// 	msgCh <- msg
+	// }
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker("tcp://" + *mqttsrv + ":1883") // currently only 1883 port.
 
-	clt := mqtt.NewClient(opts)
+	clt = mqtt.NewClient(opts)
 
 	if token := clt.Connect(); token.Wait() && token.Error() != nil {
 		log.Fatalf("MQTT connection error: %s", token.Error())
 	}
 
-	if subscribeToken := clt.Subscribe("map/global_costmap", 0, myHandler); subscribeToken.Wait() && subscribeToken.Error() != nil {
-		log.Fatalf("MQTT subscribe error: %s", subscribeToken.Error())
-	}
+	// if subscribeToken := clt.Subscribe("map/global_costmap", 0, myHandler); subscribeToken.Wait() && subscribeToken.Error() != nil {
+	// 	log.Fatalf("MQTT subscribe error: %s", subscribeToken.Error())
+	// }
 }
 
 func LoggingSettings(logFile string) {
@@ -385,7 +407,7 @@ func main() {
 	LoggingSettings("log/" + now.Format("2006-01-02-15") + ".log")
 
 	// connect to mqtt broker
-	// listenMQTTBroker()
+	//listenMQTTBroker()
 	// go handleMqttMessage()
 
 	// Synerex Configuration

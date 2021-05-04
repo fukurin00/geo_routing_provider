@@ -89,12 +89,9 @@ func MakePathMsg(route [][3]float64) ([]byte, error) {
 		y := route[i][2]
 		prevX := route[i-1][1]
 		prevY := route[i-1][2]
-		var yaw float64
-		if x == prevX {
-			yaw = 90
-		} else {
-			yaw = math.Atan((y - prevY) / (x - prevX))
-		}
+
+		yaw := math.Atan2((y - prevY), (x - prevX))
+
 		pos := ROS_PoseStamped{
 			Header: ROS_header{
 				Seq:      uint32(i),
@@ -167,8 +164,8 @@ func Eular2Quaternion(yaw, pitch, roll float64) Quaternion {
 }
 
 func Yaw2Quaternion(yaw float64) Quaternion {
-	cy := math.Cos(yaw * 0.5)
-	sy := math.Sin(yaw * 0.5)
+	cy := math.Cos(yaw / 2)
+	sy := math.Sin(yaw / 2)
 
 	var q Quaternion
 	q.W = cy

@@ -8,7 +8,7 @@ require (
 	github.com/beefsack/go-astar v0.0.0-20200827232313-4ecf9e304482
 	github.com/eclipse/paho.mqtt.golang v1.3.3
 	github.com/fukurin00/astar_golang v0.0.0-20210501051420-262ebc7540ab
-	github.com/fukurin00/glot v0.0.0-20210503075557-4ec67d73bcd1 // indirect
+	github.com/fukurin00/glot v0.0.0-20210503075557-4ec67d73bcd1
 	github.com/fukurin00/go_ros_msg v0.0.2
 	github.com/go-ole/go-ole v1.2.5 // indirect
 	github.com/jbuchbinder/gopnm v0.0.0-20150223212718-5176c556b9ce
