@@ -14,6 +14,7 @@ import (
 
 	"github.com/fukurin00/geo_routing_provider/msg"
 	grid "github.com/fukurin00/geo_routing_provider/routing"
+	"github.com/fukurin00/geo_routing_provider/synerex"
 	"github.com/fukurin00/glot"
 
 	cav "github.com/synerex/proto_cav"
@@ -25,7 +26,6 @@ import (
 	astar "github.com/fukurin00/astar_golang"
 	ros "github.com/fukurin00/go_ros_msg"
 	"github.com/synerex/proto_mqtt"
-	pbase "github.com/synerex/synerex_proto"
 )
 
 const (
@@ -41,29 +41,22 @@ const (
 var (
 	mode Mode = ASTAR3DHEXA
 
-	resolution      = flag.Float64("reso", 0.4, "path planning resolution")
-	vizroute        = flag.Bool("visualize", true, "whether visualize route")
-	mqttsrv         = flag.String("mqtt", "localhost", "MQTT Broker address")
-	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "node serv address")
-	sxServerAddress string
+	resolution = flag.Float64("reso", 0.4, "path planning resolution")
+	vizroute   = flag.Bool("visualize", true, "whether visualize route")
+	mqttsrv    = flag.String("mqtt", "localhost", "MQTT Broker address")
 
-	mapMetaUpdate                   = false
-	mapMeta       *grid.MapMeta     = nil
-	gridMap       *grid.GridMap     = nil
-	astarPlanner  *astar.Astar            //if 2d mode
-	timeRobotMap  grid.TimeRobotMap = nil // ロボットがいるかどうかのマップ
+	mapMetaUpdate               = false
+	mapMeta       *grid.MapMeta = nil
+	gridMap       *grid.GridMap = nil
+	astarPlanner  *astar.Astar  //if 2d mode
+
+	timeRobotMap grid.TimeRobotMap = nil // ロボットがいるかどうかのマップ
+	timeMapMin   time.Time
 
 	clt mqtt.Client
 
-	mu sync.Mutex
-
-	//synerex client
-	mqttClient  *sxutil.SXServiceClient
-	routeClient *sxutil.SXServiceClient
-
-	msgCh    chan mqtt.Message
-	vizCh    chan vizOpt
-	pathUpCh chan [][3]int
+	msgCh chan mqtt.Message
+	vizCh chan vizOpt
 
 	plot2d *glot.Plot
 	plot3d *glot.Plot
@@ -75,7 +68,6 @@ var (
 func init() {
 	msgCh = make(chan mqtt.Message)
 	vizCh = make(chan vizOpt)
-	pathUpCh = make(chan [][3]int)
 
 	flag.Parse()
 	reso = *resolution
@@ -111,21 +103,34 @@ func routing(rcd *cav.DestinationRequest) {
 		isa, isb := gridMap.Pos2IndHexa(float64(rcd.Current.X), float64(rcd.Current.Y))
 		iga, igb := gridMap.Pos2IndHexa(float64(rcd.Destination.X), float64(rcd.Destination.Y))
 
-		routei, err := gridMap.PlanHexa(int(rcd.RobotId), isa, isb, iga, igb, robotVelocity, robotRotVelocity, float64(timeStep), timeRobotMap)
+		//update robot map
+		now := time.Now()
+		updateStep := int(math.Round(now.Sub(timeMapMin).Seconds() / float64(timeStep)))
+		gridMap.UpdateStep(timeRobotMap, updateStep)
+		log.Printf("update robot cost map timestep:%d", updateStep)
+		timeMapMin = now
+
+		routei, err := gridMap.PlanHexa(int(rcd.RobotId), isa, isb, iga, igb, robotVelocity, robotRotVelocity, float64(timeStep), grid.TRWCopy(timeRobotMap))
 		if err != nil {
 			log.Print(err)
 		} else {
 			//pathUpCh <- routei
 			route := gridMap.Route2PosHexa(float64(rcd.Ts.Seconds), float64(timeStep), routei)
-			if *vizroute {
-				vOpt := vizOpt{id: int(rcd.RobotId), route: route}
-				vizCh <- vOpt
-			}
 			jsonPayload, err = msg.MakePathMsg(route)
 			if err != nil {
 				log.Print(err)
 			}
 			sendPath(jsonPayload, int(rcd.RobotId))
+			now := time.Now()
+			updateStep := int(math.Round(now.Sub(timeMapMin).Seconds() / float64(timeStep)))
+			gridMap.UpdateStep(timeRobotMap, updateStep)
+			gridMap.UpdateTimeObjMapHexa(timeRobotMap, routei, robotRadius)
+			log.Printf("update robot cost map timestep:%d", updateStep)
+			timeMapMin = now
+			if *vizroute {
+				vOpt := vizOpt{id: int(rcd.RobotId), route: route}
+				vizCh <- vOpt
+			}
 		}
 
 	} else if mode == ASTAR3D {
@@ -136,7 +141,7 @@ func routing(rcd *cav.DestinationRequest) {
 		isx, isy := gridMap.Pos2Ind(float64(rcd.Current.X), float64(rcd.Current.Y))
 		igx, igy := gridMap.Pos2Ind(float64(rcd.Destination.X), float64(rcd.Destination.Y))
 
-		routei, err := gridMap.Plan(isx, isy, igx, igy, timeRobotMap)
+		routei, err := gridMap.Plan(isx, isy, igx, igy, grid.TRWCopy(timeRobotMap))
 		if err != nil {
 			log.Print(err)
 		} else {
@@ -192,7 +197,7 @@ func sendPath(jsonPayload []byte, id int) {
 		Name:  "robotRoute",
 		Cdata: &cout,
 	}
-	_, err = mqttClient.NotifySupply(&smo)
+	_, err = synerex.MqttClient.NotifySupply(&smo)
 	if err != nil {
 		log.Print(err)
 	} else {
@@ -238,28 +243,8 @@ func subsclibeRouteSupply(client *sxutil.SXServiceClient) {
 	ctx := context.Background()
 	for {
 		client.SubscribeSupply(ctx, routeCallback)
-		reconnectClient(client)
+		synerex.ReconnectClient(client)
 	}
-}
-
-//synerex recconect to client
-func reconnectClient(client *sxutil.SXServiceClient) {
-	mu.Lock()
-	if client.SXClient != nil {
-		client.SXClient = nil
-		log.Printf("Client reset \n")
-	}
-	mu.Unlock()
-	time.Sleep(5 * time.Second) // wait 5 seconds to reconnect
-	mu.Lock()
-	if client.SXClient == nil {
-		newClt := sxutil.GrpcConnectServer(sxServerAddress)
-		if newClt != nil {
-			// log.Printf("Reconnect server [%s]\n", s.SxServerAddress)
-			client.SXClient = newClt
-		}
-	}
-	mu.Unlock()
 }
 
 func handleMqttMessage() {
@@ -267,7 +252,7 @@ func handleMqttMessage() {
 		msg := <-msgCh
 		if !mapMetaUpdate {
 			log.Print("updating global costmap..")
-			mu.Lock()
+			synerex.Mu.Lock()
 			var occupancy ros.OccupancyGrid
 			merr := json.Unmarshal(msg.Payload(), &occupancy)
 			if merr != nil {
@@ -280,7 +265,7 @@ func handleMqttMessage() {
 				mapMetaUpdate = true
 				plot2d.SavePlot("map/global_costmap.png")
 			}
-			mu.Unlock()
+			synerex.Mu.Unlock()
 		}
 
 	}
@@ -320,22 +305,6 @@ func LoggingSettings(logFile string) {
 	log.SetOutput(multiLogFile)
 }
 
-func SetupSynerex() {
-	channels := []uint32{pbase.MQTT_GATEWAY_SVC, pbase.ROUTING_SERVICE}
-	srv, err := sxutil.RegisterNode(*nodesrv, "GeoRoutingProvider", channels, nil)
-	if err != nil {
-		log.Fatal("can not registar node")
-	}
-	log.Printf("connectiong server [%s]", srv)
-	sxServerAddress = srv
-
-	synerexClient := sxutil.GrpcConnectServer(srv)
-	argJson1 := "{Client: GeoMQTT}"
-	mqttClient = sxutil.NewSXServiceClient(synerexClient, pbase.MQTT_GATEWAY_SVC, argJson1)
-	argJson2 := "{Client: GeoRoute}"
-	routeClient = sxutil.NewSXServiceClient(synerexClient, pbase.ROUTING_SERVICE, argJson2)
-}
-
 func SetupStaticMap() {
 	mapMeta, err := grid.ReadStaticMapImage(yamlFile, mapFile, closeThresh)
 	if err != nil {
@@ -357,6 +326,7 @@ func SetupStaticMap() {
 	} else if mode == ASTAR3DHEXA {
 		gridMap = grid.NewGridMapResoHexa(*mapMeta, robotRadius, reso, objMap)
 		timeRobotMap = grid.NewTRW(gridMap.MaxT, gridMap.Width, gridMap.Height)
+		timeMapMin = time.Now()
 		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2PointHexa())
 		plot2d.SavePlot("map/static_obj_map_hexa.png")
 		// plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3PointHexa())
@@ -379,20 +349,6 @@ func testPath() {
 	}
 }
 
-// func updateTimeObjMapHandler() {
-// 	log.Printf("start updating costmap timestep is %d", timeStep)
-// 	timer := time.NewTicker(time.Duration(timeStep))
-// 	defer timer.Stop()
-// 	for {
-// 		select {
-// 		case <-timer.C:
-// 			gridMap.Update(timeRobotMap)
-// 		case route := <-pathUpCh:
-// 			gridMap.UpdateTimeObjMapHexa(timeRobotMap, route, robotRadius)
-// 		}
-// 	}
-// }
-
 func main() {
 	log.Printf("start geo-routing server mode:%s, timestep:%d, resolution:%f", mode.String(), timeStep, reso)
 	go sxutil.HandleSigInt()
@@ -408,7 +364,7 @@ func main() {
 	// go handleMqttMessage()
 
 	// Synerex Configuration
-	SetupSynerex()
+	synerex.SetupSynerex()
 
 	// visualization configuration
 	plot2d, _ = glot.NewPlot(2, false, false)
@@ -422,7 +378,7 @@ func main() {
 	//start main function
 	log.Print("start subscribing")
 
-	go subsclibeRouteSupply(routeClient)
+	go subsclibeRouteSupply(synerex.RouteClient)
 	//go updateTimeObjMapHandler()
 	if *vizroute {
 		go vizualizeHandler()

@@ -17,12 +17,12 @@ type TimeStamp struct {
 	Nsecs uint32 `json:"nsecs"`
 }
 
-func (t TimeStamp) CalcTime() time.Time {
+func (t TimeStamp) Time() time.Time {
 	o := time.Unix(int64(t.Secs), int64(t.Nsecs))
 	return o
 }
 
-func (t TimeStamp) ToF() float64 {
+func (t TimeStamp) Float64() float64 {
 	return float64(t.Secs) + float64(t.Nsecs*uint32(math.Pow10(-9)))
 }
 
