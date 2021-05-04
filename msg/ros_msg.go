@@ -84,9 +84,17 @@ type Path struct {
 func MakePathMsg(route [][3]float64) ([]byte, error) {
 	var poses []ROS_PoseStamped
 
-	for i := 0; i < len(route); i++ {
+	for i := 1; i < len(route); i++ {
 		x := route[i][1]
 		y := route[i][2]
+		prevX := route[i-1][1]
+		prevY := route[i-1][2]
+		var yaw float64
+		if x == prevX {
+			yaw = 90
+		} else {
+			yaw = math.Atan((y - prevY) / (x - prevX))
+		}
 		pos := ROS_PoseStamped{
 			Header: ROS_header{
 				Seq:      uint32(i),
@@ -94,7 +102,8 @@ func MakePathMsg(route [][3]float64) ([]byte, error) {
 				Frame_id: "map",
 			},
 			Pose: Pose{
-				Position: Point{X: x, Y: y, Z: 0.0},
+				Position:    Point{X: x, Y: y, Z: 0.0},
+				Orientation: Yaw2Quaternion(yaw),
 			},
 		}
 		poses = append(poses, pos)
@@ -139,4 +148,32 @@ func MakePathMsg2D(route [][2]float64) ([]byte, error) {
 	}
 	return jm, err
 
+}
+
+func Eular2Quaternion(yaw, pitch, roll float64) Quaternion {
+	cy := math.Cos(yaw * 0.5)
+	sy := math.Sin(yaw * 0.5)
+	cp := math.Cos(pitch * 0.5)
+	sp := math.Sin(pitch * 0.5)
+	cr := math.Cos(roll * 0.5)
+	sr := math.Sin(roll * 0.5)
+
+	var q Quaternion
+	q.W = cr*cp*cy + sr*sp*sy
+	q.X = sr*cp*cy - cr*sp*sy
+	q.Y = cr*sp*cy + sr*cp*sy
+	q.Z = cr*cp*sy - sr*sp*cy
+	return q
+}
+
+func Yaw2Quaternion(yaw float64) Quaternion {
+	cy := math.Cos(yaw * 0.5)
+	sy := math.Sin(yaw * 0.5)
+
+	var q Quaternion
+	q.W = cy
+	q.X = 0
+	q.Y = 0
+	q.Z = sy
+	return q
 }

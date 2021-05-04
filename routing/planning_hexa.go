@@ -97,10 +97,10 @@ func (g GridMap) Pos2IndHexa(x, y float64) (int, int) {
 }
 
 type logOpt struct {
-	X    int
-	Y    int
-	T    int
-	Cost float64
+	X         int
+	Y         int
+	T         int
+	Cost      float64
 	StopCount int
 }
 
@@ -197,7 +197,8 @@ func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TW
 			goal.Cost = current.Cost
 			goal.T = current.T
 			elaps := time.Since(startTime).Seconds()
-			log.Printf("robot%d planning (%f, %f) to (%f, %f) takes %f seconds, count is %d",
+			route = m.finalPath(goal, closeSetT)
+			log.Printf("robot%d planning (%f, %f) to (%f, %f) took %f seconds, count: %d, length: %d",
 				id,
 				m.MapOrigin.X+float64(sx)*m.Resolution,
 				m.MapOrigin.Y+float64(sy)*m.Resolution,
@@ -205,8 +206,9 @@ func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TW
 				m.MapOrigin.Y+float64(gy)*m.Resolution,
 				elaps,
 				count,
+				len(route),
 			)
-			return m.finalPath(goal, closeSetT), nil
+			return route, nil
 		}
 
 		delete(openSet, minKey)
