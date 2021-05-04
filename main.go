@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	robotRadius      float64 = 0.30
+	robotRadius      float64 = 0.25
 	closeThresh      float64 = 0.85
 	robotVelocity    float64 = 1.0 // [m/sec]
 	robotRotVelocity float64 = 1.0 // [rad/sec]
@@ -78,7 +78,7 @@ func init() {
 	flag.Parse()
 	reso = *resolution
 	//timeStep = reso/robotVelocity + 2*math.Pi/3/robotRotVelocity // L/v + 2pi/3w  120度回転したときの一番かかる時間
-	timeStep = 3 * int(math.Ceil(reso / robotVelocity)) //切り上げ整数
+	timeStep = 3 * int(math.Ceil(reso/robotVelocity)) //切り上げ整数
 }
 
 type vizOpt struct {
@@ -385,7 +385,8 @@ func main() {
 	LoggingSettings("log/" + now.Format("2006-01-02-15") + ".log")
 
 	// connect to mqtt broker
-	listenMQTTBroker()
+	// listenMQTTBroker()
+	// go handleMqttMessage()
 
 	// Synerex Configuration
 	SetupSynerex()
@@ -401,9 +402,9 @@ func main() {
 
 	//start main function
 	log.Print("start subscribing")
-	go handleMqttMessage()
+
 	go subsclibeRouteSupply(routeClient)
-	go updateTimeObjMapHandler()
+	//go updateTimeObjMapHandler()
 	if *vizroute {
 		go vizualizeHandler()
 	}
