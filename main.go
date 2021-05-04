@@ -50,8 +50,8 @@ var (
 	mapMetaUpdate                   = false
 	mapMeta       *grid.MapMeta     = nil
 	gridMap       *grid.GridMap     = nil
-	astarPlanner  *astar.Astar      //if 2d mode
-	timeCostMap   grid.TimeRobotMap = nil
+	astarPlanner  *astar.Astar            //if 2d mode
+	timeRobotMap  grid.TimeRobotMap = nil // ロボットがいるかどうかのマップ
 
 	clt mqtt.Client
 
@@ -111,7 +111,7 @@ func routing(rcd *cav.DestinationRequest) {
 		isa, isb := gridMap.Pos2IndHexa(float64(rcd.Current.X), float64(rcd.Current.Y))
 		iga, igb := gridMap.Pos2IndHexa(float64(rcd.Destination.X), float64(rcd.Destination.Y))
 
-		routei, err := gridMap.PlanHexa(int(rcd.RobotId), isa, isb, iga, igb, robotVelocity, robotRotVelocity, float64(timeStep), append(timeCostMap[:0:0], timeCostMap...))
+		routei, err := gridMap.PlanHexa(int(rcd.RobotId), isa, isb, iga, igb, robotVelocity, robotRotVelocity, float64(timeStep), timeRobotMap)
 		if err != nil {
 			log.Print(err)
 		} else {
@@ -136,7 +136,7 @@ func routing(rcd *cav.DestinationRequest) {
 		isx, isy := gridMap.Pos2Ind(float64(rcd.Current.X), float64(rcd.Current.Y))
 		igx, igy := gridMap.Pos2Ind(float64(rcd.Destination.X), float64(rcd.Destination.Y))
 
-		routei, err := gridMap.Plan(isx, isy, igx, igy)
+		routei, err := gridMap.Plan(isx, isy, igx, igy, timeRobotMap)
 		if err != nil {
 			log.Print(err)
 		} else {
@@ -274,8 +274,7 @@ func handleMqttMessage() {
 				log.Print(merr)
 			} else {
 				mapMeta = grid.LoadROSMap(occupancy, 50)
-				maxT := grid.MaxTimeLength
-				gridMap = grid.NewGridMap(*mapMeta, maxT, robotRadius)
+				gridMap = grid.NewGridMap(*mapMeta, robotRadius)
 				log.Print("global costmap updated")
 				plot2d.AddPointGroup("costmap", "dots", gridMap.ConvertObjMap2Point())
 				mapMetaUpdate = true
@@ -350,15 +349,14 @@ func SetupStaticMap() {
 		astarPlanner = astar.NewAstar(objMap, robotRadius, reso)
 		log.Print("load astar obj map")
 	} else if mode == ASTAR3D {
-		maxT := grid.MaxTimeLength
-		gridMap = grid.NewGridMapReso(*mapMeta, maxT, robotRadius, reso, objMap)
+		gridMap = grid.NewGridMapReso(*mapMeta, robotRadius, reso, objMap)
+		timeRobotMap = grid.NewTRW(gridMap.MaxT, gridMap.Width, gridMap.Height)
 		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2Point())
 		plot2d.SavePlot("map/static_obj_map.png")
 		plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3Point())
 	} else if mode == ASTAR3DHEXA {
-		maxT := grid.MaxTimeLength
-		gridMap = grid.NewGridMapResoHexa(*mapMeta, maxT, robotRadius, reso, objMap)
-		timeCostMap = append(gridMap.TW[:0:0], gridMap.TW...) // copy slice
+		gridMap = grid.NewGridMapResoHexa(*mapMeta, robotRadius, reso, objMap)
+		timeRobotMap = grid.NewTRW(gridMap.MaxT, gridMap.Width, gridMap.Height)
 		plot2d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap2PointHexa())
 		plot2d.SavePlot("map/static_obj_map_hexa.png")
 		// plot3d.AddPointGroup("objmap", "dots", gridMap.ConvertObjMap3PointHexa())
@@ -369,7 +367,7 @@ func testPath() {
 	isx, isy := gridMap.Pos2Ind(0, 0)
 	igx, igy := gridMap.Pos2Ind(30, 5)
 
-	routei, err := gridMap.Plan(isx, isy, igx, igy)
+	routei, err := gridMap.Plan(isx, isy, igx, igy, timeRobotMap)
 	if err != nil {
 		log.Print(err)
 	} else {
@@ -377,7 +375,6 @@ func testPath() {
 		plot2d.AddPointGroup("route", "points", grid.Convert32DPoint(route))
 		plot2d.SavePlot("route/test_route2D.png")
 		plot3d.AddPointGroup("route", "points", grid.Convert3DPoint(route))
-		//plot3d.SetZrange(0, routei[len(routei)-1][0])
 		plot3d.SavePlot("route/test_route3D.png")
 	}
 }
@@ -389,9 +386,9 @@ func updateTimeObjMapHandler() {
 	for {
 		select {
 		case <-timer.C:
-			gridMap.Update(timeCostMap)
+			gridMap.Update(timeRobotMap)
 		case route := <-pathUpCh:
-			gridMap.UpdateTimeObjMapHexa(timeCostMap, route, robotRadius)
+			gridMap.UpdateTimeObjMapHexa(timeRobotMap, route, robotRadius)
 		}
 	}
 }

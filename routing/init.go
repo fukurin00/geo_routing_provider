@@ -34,8 +34,8 @@ type GridMap struct {
 
 	CurrentMinTime float64
 
-	TW        TimeRobotMap
-	MaxT      int
+	//TRW       TimeRobotMap // ロボットが占有してるかどうかのマップ
+	MaxT      int    // =MaxTimeLenghth
 	ObjectMap ObjMap //元からある障害物ならTrue
 }
 
@@ -57,22 +57,19 @@ func (g GridMap) Pos2Ind(x, y float64) (int, int) {
 
 // initialize grid map using map resolution
 // not using now
-func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
+func NewGridMap(m MapMeta, robotRadius float64) *GridMap {
 	g := new(GridMap)
 	g.Resolution = m.Reso
 	g.Origin = m.Origin
 	g.MapOrigin = m.Origin
 	g.Width = m.W
 	g.Height = m.H
-	g.MaxT = maxT
+	g.MaxT = MaxTimeLength
+
+	// init objemac slice
 	g.ObjectMap = make([][]bool, m.H)
 	for i := 0; i < m.H; i++ {
 		g.ObjectMap[i] = make([]bool, m.W)
-	}
-
-	g.TW = make(TimeRobotMap, maxT)
-	for i := 0; i < maxT; i++ {
-		g.TW[i] = g.ObjectMap
 	}
 
 	width := m.W
@@ -113,9 +110,9 @@ func NewGridMap(m MapMeta, maxT int, robotRadius float64) *GridMap {
 	return g
 }
 
-// initialize custom resolution
+// initialize gridmap by custom resolution
 // using main
-func NewGridMapReso(m MapMeta, maxT int, robotRadius float64, resolution float64, objMap [][2]float64) *GridMap {
+func NewGridMapReso(m MapMeta, robotRadius float64, resolution float64, objMap [][2]float64) *GridMap {
 	start := time.Now()
 	g := new(GridMap)
 	g.Resolution = resolution
@@ -137,14 +134,10 @@ func NewGridMapReso(m MapMeta, maxT int, robotRadius float64, resolution float64
 	g.Width = int(math.Round((maxX - g.Origin.X) / resolution))
 	g.Height = int(math.Round((maxY - g.Origin.Y) / resolution))
 
-	g.MaxT = maxT
+	g.MaxT = MaxTimeLength
 	g.ObjectMap = make([][]bool, g.Height)
 	for i := 0; i < g.Height; i++ {
 		g.ObjectMap[i] = make([]bool, g.Width)
-	}
-	g.TW = make(TimeRobotMap, maxT)
-	for i := 0; i < maxT; i++ {
-		g.TW[i] = g.ObjectMap
 	}
 
 	count := 0
@@ -155,6 +148,7 @@ func NewGridMapReso(m MapMeta, maxT int, robotRadius float64, resolution float64
 			g.ObjectMap[j][i] = false
 			for _, op := range objMap {
 				d := math.Hypot(op[0]-x, op[1]-y)
+				// if distance < robot radius, robot cannot path
 				if d <= robotRadius {
 					g.ObjectMap[j][i] = true
 					count += 1
@@ -177,4 +171,15 @@ func MinFloat(a []float64) float64 {
 func MaxFloat(a []float64) float64 {
 	sort.Float64s(a)
 	return a[len(a)-1]
+}
+
+func NewTRW(t, w, h int) TimeRobotMap {
+	var tw TimeRobotMap = make([]ObjMap, t)
+	for i := 0; i < t; i++ {
+		tw[i] = make(ObjMap, h)
+		for j := 0; j < h; j++ {
+			tw[i][j] = make([]bool, w)
+		}
+	}
+	return tw
 }

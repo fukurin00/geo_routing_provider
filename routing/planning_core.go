@@ -44,7 +44,7 @@ func NewIndexT(t, x, y int) *IndexT {
 	return n
 }
 
-func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
+func (m GridMap) Plan(sx, sy, gx, gy int, TRW TimeRobotMap) (route [][3]int, oerr error) {
 	startTime := time.Now()
 
 	if m.ObjectMap[gy][gx] {
@@ -116,7 +116,7 @@ func (m GridMap) Plan(sx, sy, gx, gy int) (route [][3]int, oerr error) {
 		closeSet[nodeIndex(current)] = current
 		closeSetT[nodeIndexT(current)] = current
 
-		around := current.Around(&m, minTime)
+		around := current.Around(&m, minTime, TRW)
 		for _, an := range around {
 			indT := nodeIndexT(an)
 			ind := nodeIndex(an)
@@ -181,7 +181,7 @@ func (s *Node) NewNode(t, x, y int, cost float64) *Node {
 	return n
 }
 
-func (n *Node) Around(g *GridMap, minTime int) []*Node {
+func (n *Node) Around(g *GridMap, minTime int, TRW TimeRobotMap) []*Node {
 	// time, x, y, cost
 	motion := [9][4]float64{
 		{1.0, 0.0, 0.0, 2.0}, //stay 要修正
@@ -219,8 +219,8 @@ func (n *Node) Around(g *GridMap, minTime int) []*Node {
 			continue
 		}
 
-		//通れないコストマップは外す
-		if g.TW[aT][aY][aX] {
+		//ロボットがいて通れないコストマップは外す
+		if TRW[aT][aY][aX] {
 			continue
 		}
 

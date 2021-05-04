@@ -12,7 +12,7 @@ import (
 
 // initialize custom resolution
 // using main
-func NewGridMapResoHexa(m MapMeta, maxT int, robotRadius float64, resolution float64, objMap [][2]float64) *GridMap {
+func NewGridMapResoHexa(m MapMeta, robotRadius float64, resolution float64, objMap [][2]float64) *GridMap {
 	start := time.Now()
 	g := new(GridMap)
 	g.MapOrigin = m.Origin
@@ -34,14 +34,10 @@ func NewGridMapResoHexa(m MapMeta, maxT int, robotRadius float64, resolution flo
 	g.Width = int(math.Round((maxX - g.Origin.X) / resolution))
 	g.Height = int(math.Round((maxY - g.Origin.Y) / resolution))
 
-	g.MaxT = maxT
+	g.MaxT = MaxTimeLength
 	g.ObjectMap = make([][]bool, g.Height)
 	for i := 0; i < g.Height; i++ {
 		g.ObjectMap[i] = make([]bool, g.Width)
-	}
-	g.TW = make(TimeRobotMap, maxT)
-	for i := 0; i < maxT; i++ {
-		g.TW[i] = g.ObjectMap
 	}
 
 	count := 0
@@ -104,7 +100,7 @@ type logOpt struct {
 	StopCount int
 }
 
-func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TW TimeRobotMap) (route [][3]int, oerr error) {
+func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TRW TimeRobotMap) (route [][3]int, oerr error) {
 	startTime := time.Now()
 	var logData []logOpt
 
@@ -215,7 +211,7 @@ func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TW
 		closeSet[nodeIndex(current)] = current
 		closeSetT[nodeIndexT(current)] = current
 
-		around := current.AroundHexa(&m, minTime, v, w, timeStep, TW)
+		around := current.AroundHexa(&m, minTime, v, w, timeStep, TRW)
 		for _, an := range around {
 			indT := nodeIndexT(an)
 			ind := nodeIndex(an)
@@ -250,7 +246,7 @@ func (g GridMap) Route2PosHexa(minT float64, timeStep float64, route [][3]int) [
 	return fRoute
 }
 
-func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64, TW TimeRobotMap) []*Node {
+func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64, TRW TimeRobotMap) []*Node {
 
 	// var diffA int
 	// var diffB int
@@ -295,7 +291,7 @@ func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64, TW Tim
 		}
 
 		//ロボットがいて通れないところは外す
-		if TW[aT][aY][aX] {
+		if TRW[aT][aY][aX] {
 			continue
 		}
 
