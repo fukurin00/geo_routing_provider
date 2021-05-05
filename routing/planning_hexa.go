@@ -69,6 +69,14 @@ func getB(x, y float64) float64 {
 	return x/math.Sqrt(3) - y
 }
 
+func A(x, y float64) float64 {
+	return x/math.Sqrt(3) + y
+}
+
+func B(x, y float64) float64 {
+	return x/math.Sqrt(3) - y
+}
+
 func getXAB(a, b float64) float64 {
 	return math.Sqrt(3)/2*a + math.Sqrt(3)/2*b
 }
@@ -97,7 +105,7 @@ type logOpt struct {
 	StopCount int
 }
 
-func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TRW TimeRobotMap) (route [][3]int, oerr error) {
+func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TRW TimeRobotMap, otherRobot map[Index]bool) (route [][3]int, oerr error) {
 	startTime := time.Now()
 	var logData []logOpt
 
@@ -208,7 +216,7 @@ func (m GridMap) PlanHexa(id int, sa, sb, ga, gb int, v, w, timeStep float64, TR
 		closeSet[nodeIndex(current)] = current
 		closeSetT[nodeIndexT(current)] = current
 
-		around := current.AroundHexa(&m, minTime, v, w, timeStep, TRW)
+		around := current.AroundHexa(&m, minTime, v, w, timeStep, TRW, otherRobot)
 		for _, an := range around {
 			indT := nodeIndexT(an)
 			ind := nodeIndex(an)
@@ -243,7 +251,7 @@ func (g GridMap) Route2PosHexa(minT float64, timeStep float64, route [][3]int) [
 	return fRoute
 }
 
-func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64, TRW TimeRobotMap) []*Node {
+func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64, TRW TimeRobotMap, otherRobot map[Index]bool) []*Node {
 
 	// var diffA int
 	// var diffB int
@@ -285,6 +293,13 @@ func (n Node) AroundHexa(g *GridMap, minTime int, v, w, timeStep float64, TRW Ti
 		//元から障害物で通れないところは外す
 		if g.ObjectMap[newIndex(aX, aY)] {
 			continue
+		}
+
+		//他のロボットがいる場所は外す
+		if val, ok := otherRobot[newIndex(aX, aY)]; ok {
+			if val {
+				continue
+			}
 		}
 
 		//ロボットがいて通れないところは外す

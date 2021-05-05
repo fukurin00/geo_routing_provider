@@ -9,10 +9,12 @@ import (
 	"log"
 	"math"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/fukurin00/geo_routing_provider/msg"
+	"github.com/fukurin00/geo_routing_provider/robot"
 	grid "github.com/fukurin00/geo_routing_provider/routing"
 	"github.com/fukurin00/geo_routing_provider/synerex"
 	"github.com/fukurin00/glot"
@@ -29,7 +31,7 @@ import (
 )
 
 const (
-	robotRadius      float64 = 0.25
+	robotRadius      float64 = 0.3
 	closeThresh      float64 = 0.85
 	robotVelocity    float64 = 1.0 // [m/sec]
 	robotRotVelocity float64 = 1.0 // [rad/sec]
@@ -41,7 +43,7 @@ const (
 var (
 	mode Mode = ASTAR3DHEXA
 
-	resolution = flag.Float64("reso", 0.4, "path planning resolution")
+	resolution = flag.Float64("reso", 0.5, "path planning resolution")
 	vizroute   = flag.Bool("visualize", true, "whether visualize route")
 	mqttsrv    = flag.String("mqtt", "localhost", "MQTT Broker address")
 
@@ -50,14 +52,17 @@ var (
 	gridMap       *grid.GridMap = nil
 	astarPlanner  *astar.Astar  //if 2d mode
 
+	robotList map[int]*robot.RobotStatus
+
 	timeRobotMap grid.TimeRobotMap = nil // ロボットがいるかどうかのマップ
-	timeMapMin   time.Time
+	timeMapMin   time.Time               //time mapの最小時刻
 
 	clt mqtt.Client
 
 	msgCh chan mqtt.Message
 	vizCh chan vizOpt
 
+	// for vizualization
 	plot2d *glot.Plot
 	plot3d *glot.Plot
 
@@ -68,6 +73,8 @@ var (
 func init() {
 	msgCh = make(chan mqtt.Message)
 	vizCh = make(chan vizOpt)
+
+	robotList = make(map[int]*robot.RobotStatus)
 
 	flag.Parse()
 	reso = *resolution
@@ -103,18 +110,34 @@ func routing(rcd *cav.DestinationRequest) {
 		isa, isb := gridMap.Pos2IndHexa(float64(rcd.Current.X), float64(rcd.Current.Y))
 		iga, igb := gridMap.Pos2IndHexa(float64(rcd.Destination.X), float64(rcd.Destination.Y))
 
-		//update robot map
+		if val, ok := robotList[int(rcd.RobotId)]; ok {
+			val.SetDest(ros.Point{X: float64(rcd.Destination.X), Y: float64(rcd.Destination.Y)})
+		}
+
+		// update robot map
 		now := time.Now()
 		updateStep := int(math.Round(now.Sub(timeMapMin).Seconds() / float64(timeStep)))
 		gridMap.UpdateStep(timeRobotMap, updateStep)
 		log.Printf("update robot cost map timestep:%d", updateStep)
 		timeMapMin = now
 
-		routei, err := gridMap.PlanHexa(int(rcd.RobotId), isa, isb, iga, igb, robotVelocity, robotRotVelocity, float64(timeStep), grid.TRWCopy(timeRobotMap))
+		// get other robots map
+		others := make(map[grid.Index]bool)
+		for id, robot := range robotList {
+			if id == int(rcd.RobotId) {
+				continue
+			} else {
+				if !robot.HavePath {
+					ia, ib := gridMap.Pos2IndHexa(robot.Pos.X, robot.Pos.Y)
+					others[grid.Index{X: ia, Y: ib}] = true
+				}
+			}
+		}
+
+		routei, err := gridMap.PlanHexa(int(rcd.RobotId), isa, isb, iga, igb, robotVelocity, robotRotVelocity, float64(timeStep), grid.TRWCopy(timeRobotMap), others)
 		if err != nil {
 			log.Print(err)
 		} else {
-			//pathUpCh <- routei
 			route := gridMap.Route2PosHexa(float64(rcd.Ts.Seconds), float64(timeStep), routei)
 			jsonPayload, err = msg.MakePathMsg(route)
 			if err != nil {
@@ -127,6 +150,11 @@ func routing(rcd *cav.DestinationRequest) {
 			gridMap.UpdateTimeObjMapHexa(timeRobotMap, routei, robotRadius)
 			log.Printf("update robot cost map timestep:%d", updateStep)
 			timeMapMin = now
+
+			if robot, ok := robotList[int(rcd.RobotId)]; ok {
+				robot.SetPath(routei)
+			}
+
 			if *vizroute {
 				vOpt := vizOpt{id: int(rcd.RobotId), route: route}
 				vizCh <- vOpt
@@ -173,17 +201,6 @@ func routing(rcd *cav.DestinationRequest) {
 
 func sendPath(jsonPayload []byte, id int) {
 	topic := fmt.Sprintf("robot/path/%d", id)
-	// t := clt.Publish(topic, 0, false, string(jsonPayload))
-	// t.Wait()
-	// go func() {
-	// 	_ = t.Done() // Can also use '<-t.Done()' in releases > 1.2.0
-	// 	if t.Error() != nil {
-	// 		log.Print(t.Error()) // Use your preferred logging technique (or just fmt.Printf)
-	// 	} else {
-
-	// 	}
-	// }()
-
 	mqttProt := proto_mqtt.MQTTRecord{
 		Topic:  topic,
 		Record: jsonPayload,
@@ -243,6 +260,39 @@ func subsclibeRouteSupply(client *sxutil.SXServiceClient) {
 	ctx := context.Background()
 	for {
 		client.SubscribeSupply(ctx, routeCallback)
+		synerex.ReconnectClient(client)
+	}
+}
+
+func mqttCallback(client *sxutil.SXServiceClient, sp *api.Supply) {
+	// ignore my message
+	if sp.SenderId == uint64(client.ClientID) {
+		return
+	}
+
+	rcd := &proto_mqtt.MQTTRecord{}
+	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
+	if err != nil {
+		log.Print("mqtt unmarshal error: ", err)
+	} else {
+		if strings.HasPrefix(rcd.Topic, "robot/position/") {
+			var id int
+			fmt.Scanf(rcd.Topic, "robot/position/%d", &id)
+			if val, ok := robotList[id]; ok {
+				val.SetPos(rcd.Record)
+			} else {
+				robotList[id] = robot.NewRobot(id, robotRadius)
+				robotList[id].SetPos(rcd.Record)
+			}
+		}
+	}
+
+}
+
+func subsclibeMqttSupply(client *sxutil.SXServiceClient) {
+	ctx := context.Background()
+	for {
+		client.SubscribeSupply(ctx, mqttCallback)
 		synerex.ReconnectClient(client)
 	}
 }
@@ -379,6 +429,8 @@ func main() {
 	log.Print("start subscribing")
 
 	go subsclibeRouteSupply(synerex.RouteClient)
+	go subsclibeMqttSupply(synerex.MqttClient)
+
 	//go updateTimeObjMapHandler()
 	if *vizroute {
 		go vizualizeHandler()
